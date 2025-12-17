@@ -1,0 +1,7 @@
+licenses(["notice"])  # Apache 2.0
+
+filegroup(
+    name = "templates",
+    srcs = glob(["*.tmpl"]),
+    visibility = ["//visibility:public"],
+)

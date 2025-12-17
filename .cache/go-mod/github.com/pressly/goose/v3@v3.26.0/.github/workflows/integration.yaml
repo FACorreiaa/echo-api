@@ -1,0 +1,31 @@
+name: Goose integration tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run integration tests
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
+      - name: Install tparse
+        run: go install github.com/mfridman/tparse@main
+      - name: Run full integration tests
+        run: |
+          make test-integration

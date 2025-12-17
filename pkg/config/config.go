@@ -1,0 +1,136 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strconv"
+
+	// Load environment variables from .env files when present.
+	_ "github.com/joho/godotenv"
+)
+
+// Config holds all application configuration
+type Config struct {
+	Server        ServerConfig
+	Database      DatabaseConfig
+	Auth          AuthConfig
+	Observability ObservabilityConfig
+	Profiling     ProfilingConfig
+	Gemini        GeminiConfig
+}
+
+type GeminiConfig struct {
+	APIKey string
+	Model  string
+}
+
+type ServerConfig struct {
+	Host               string
+	Port               int
+	BaseURL            string
+	RateLimitPerSecond int
+	RateLimitBurst     int
+}
+
+type DatabaseConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	Database string
+	SSLMode  string
+}
+
+type AuthConfig struct {
+	JWTSecret  string
+	AdminEmail string
+}
+
+type ObservabilityConfig struct {
+	MetricsEnabled bool
+	MetricsPort    int
+}
+
+type ProfilingConfig struct {
+	Enabled bool
+	Port    int
+}
+
+// Load reads configuration from environment variables
+func Load() (*Config, error) {
+	cfg := &Config{
+		Server: ServerConfig{
+			Host:               getEnv("SERVER_HOST", "localhost"),
+			Port:               getEnvAsInt("SERVER_PORT", 8080),
+			BaseURL:            getEnv("BASE_URL", "http://localhost:8080"),
+			RateLimitPerSecond: getEnvAsInt("SERVER_RATE_LIMIT_PER_SECOND", 100),
+			RateLimitBurst:     getEnvAsInt("SERVER_RATE_LIMIT_BURST", 200),
+		},
+		Database: DatabaseConfig{
+			Host:     getEnv("POSTGRES_HOST", "localhost"),
+			Port:     getEnvAsInt("POSTGRES_PORT", 5469),
+			User:     getEnv("POSTGRES_USER", "postgres"),
+			Password: getEnv("POSTGRES_PASSWORD", "postgres"),
+			Database: getEnv("POSTGRES_DB", "echo-dev"),
+			SSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
+		},
+		Auth: AuthConfig{
+			JWTSecret:  getEnv("JWT_SECRET", "changeme"),
+			AdminEmail: getEnv("ADMIN_EMAIL", ""),
+		},
+		Observability: ObservabilityConfig{
+			MetricsEnabled: getEnvAsBool("METRICS_ENABLED", true),
+			MetricsPort:    getEnvAsInt("METRICS_PORT", 9090),
+		},
+		Profiling: ProfilingConfig{
+			Enabled: getEnvAsBool("PPROF_ENABLED", false),
+			Port:    getEnvAsInt("PPROF_PORT", 6060),
+		},
+		Gemini: GeminiConfig{
+			APIKey: getEnv("GEMINI_API_KEY", ""),
+			Model:  getEnv("GEMINI_MODEL", ""),
+		},
+	}
+
+	if cfg.Gemini.APIKey == "" {
+		return nil, errors.New("GEMINI_API_KEY is required")
+	}
+
+	if cfg.Gemini.Model == "" {
+		return nil, errors.New("GEMINI_MODEL is required")
+	}
+
+	return cfg, nil
+}
+
+// DSN returns the database connection string
+func (c *DatabaseConfig) DSN() string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.Database, c.SSLMode,
+	)
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+	valueStr := os.Getenv(key)
+	if value, err := strconv.Atoi(valueStr); err == nil {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	valueStr := os.Getenv(key)
+	if value, err := strconv.ParseBool(valueStr); err == nil {
+		return value
+	}
+	return defaultValue
+}

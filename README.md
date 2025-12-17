@@ -10,6 +10,7 @@ This repo currently represents the **Echo API** (backend). Frontend is **TBA**.
 - **Objective-driven insights:** progress against your goals, pacing, and gentle correction.
 - **Story-driven summaries:** monthly “mini-wrapped” and a year-end “Money Wrapped” (Spotify Wrapped-style).
 - **Automate good decisions:** recommend and (eventually) execute the highest-leverage actions.
+- **Bring your own spreadsheet:** drop in your existing Excel/Sheets-style model and have Echo power it everywhere.
 
 ## The 6 Pillars (mapped to features)
 
@@ -22,27 +23,48 @@ Echo is designed to explicitly hit these 6 outcomes:
 5. **Clear Goals (Target):** goal/bucket tracking with pace alerts (“ahead/behind plan”).
 6. **Money Operating System (Automation):** rules + tasks now; true automation later (when banking rails allow).
 
+## Bring Your Own Spreadsheet (BYOS)
+
+Echo is built to work for people who already have a spreadsheet-based system.
+
+- Upload an `.xlsx` (or select a saved template) that contains *your* categories, budgets, and formulas.
+- Map Echo’s canonical fields (transactions, accounts, categories, goals) to named ranges/tables in the sheet.
+- Echo keeps the sheet “fresh” across devices by re-computing outputs as new data syncs in.
+
+Design constraints (intentional):
+
+- No macros/VBA for safety and portability.
+- Prefer deterministic, auditable calculations (Echo can show “why” a number changed).
+
 ## MVP (Prove “Alive” + Wrapped)
 
 Focus: make something people *want to come back to* and *share*.
 
 - **Data ingestion v1:** CSV upload/import (bank exports) to avoid early aggregator complexity.
+- **Document import v1:** import CSV/XLSX (and later invoices) into a canonical transaction model.
 - **Transaction normalization:** merchant cleanup + categorization with user overrides.
 - **Spending overview:** top categories, merchants, trends, month-to-date vs last month.
+- **Foundation v1:** optional manual net worth entries + basic runway metric.
 - **Goals/buckets v1:** targets, timelines, progress pacing, “behind plan” nudges.
 - **Subscriptions v1:** detect recurring charges; one-tap “review/cancel checklist”.
 - **Monthly insights:** “3 things changed this month” + “1 action to take this week”.
 - **Mini-wrapped:** shareable monthly summary cards (no sensitive details by default).
+- **BYOS v1:** upload a spreadsheet template + field mapping; export computed views as shareable/read-only.
+- **Auth + sessions:** account creation, login, refresh, logout.
+- **Payments (optional in MVP):** Stripe Checkout for premium plan (behind feature flags).
 
 ## Post‑MVP (Moat: Operating System + Trust)
 
 - **Bank connections:** Plaid / GoCardless / Teller (region dependent), incremental sync, webhooks.
+- **Invoice ingestion:** parse PDFs/images into transactions (receipts/invoices), reconcile against bank data.
 - **Anomaly detection:** category/merchant deviation alerts; fee discovery; duplicate charges.
 - **Net worth engine:** assets/liabilities snapshots, runway, debt payoff projections.
-- **Automation engine:** “If this then that” rules, scheduled tasks, and (where possible) transfers.
+- **Automation engine:** durable tasks + “if this then that” rules, scheduled nudges, and (where possible) transfers.
 - **Money Wrapped v2:** deeper storytelling, archetypes, comparisons to your own history, goal outcomes.
 - **Notifications:** push + email digests, configurable, low-noise by design.
 - **Sharing & virality:** privacy-preserving “wrapped” templates, referral loop, creator-friendly exports.
+- **BYOS v2:** richer spreadsheet integration (templates, versioning, collaboration), more functions coverage, offline-first caching.
+- **Billing maturity:** Stripe Billing, proration, coupons, taxes, and durable entitlement logic.
 
 ## AI Usage (Post‑MVP, opt‑in)
 
@@ -73,7 +95,10 @@ Hard parts (and the opportunity): bank data quality, trust/security, compliance,
 - **DB:** Postgres (via `pgx`)
 - **Jobs:** background workers for ingestion, normalization, insights, and notifications
 - **Migrations:** Goose or `migrate` (TBD)
-- **Frontend:** TBA (likely React Native or Next.js)
+- **Spreadsheet engine:** XLSX template parsing + formula evaluation (no macros), plus field mapping
+- **Payments:** Stripe (Checkout + Billing)
+- **Bank data (later):** Plaid (items, accounts, transactions) with a normalization layer into Echo’s canonical models
+- **Clients (multiplatform):** Web, Android, iOS, Desktop (frontend/framework TBA)
 
 ### Why Connect RPC is a good fit
 
