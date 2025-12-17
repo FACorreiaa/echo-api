@@ -5,7 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	user "github.com/FACorreiaa/smart-finance-tracker/internal/domain/user"
+	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/user"
+	userhandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/user/handler"
 
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/handler"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/repository"
@@ -31,6 +32,7 @@ type Dependencies struct {
 
 	// Handlers
 	AuthHandler *handler.AuthHandler
+	UserHandler *userhandler.UserHandler
 }
 
 // InitDependencies initializes all application dependencies

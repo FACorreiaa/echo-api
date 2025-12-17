@@ -8,14 +8,18 @@ import (
 
 	"connectrpc.com/connect"
 	c "connectrpc.com/cors"
+	"github.com/FACorreiaa/loci-connect-proto/gen/go/loci/auth/authconnect"
+	"github.com/FACorreiaa/loci-connect-proto/gen/go/loci/user/userconnect"
 
 	"connectrpc.com/validate"
 
-	userconnect "github.com/FACorreiaa/loci-connect-proto/gen/go/loci/user/userconnect"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/time/rate"
+
+	"github.com/FACorreiaa/smart-finance-tracker/pkg/interceptors"
+	"github.com/FACorreiaa/smart-finance-tracker/pkg/observability"
 )
 
 // SetupRouter configures all routes and returns the HTTP service
@@ -35,8 +39,6 @@ func SetupRouter(deps *Dependencies) http.Handler {
 		authconnect.AuthServiceForgotPasswordProcedure,
 		authconnect.AuthServiceResetPasswordProcedure,
 		// Public statistics endpoint
-		statisticsv1connect.StatisticsServiceGetMainPageStatisticsProcedure,
-		statisticsv1connect.StatisticsServiceStreamMainPageStatisticsProcedure,
 	}
 
 	tracer := otel.GetTracerProvider().Tracer("loci/api")
@@ -53,7 +55,7 @@ func SetupRouter(deps *Dependencies) http.Handler {
 	requestIDInterceptor := interceptors.NewRequestIDInterceptor("X-Request-ID")
 	tracingInterceptor := interceptors.NewTracingInterceptor(tracer)
 	validationInterceptor := validate.NewInterceptor()
-	subscriptionInterceptor := subscription.NewRateLimitInterceptor(deps.SubscriptionService)
+	//subscriptionInterceptor := subscription.NewRateLimitInterceptor(deps.SubscriptionService)
 
 	// Setup interceptor chain
 	interceptorChain := connect.WithInterceptors(
@@ -61,7 +63,7 @@ func SetupRouter(deps *Dependencies) http.Handler {
 		tracingInterceptor,
 		validationInterceptor,
 		rateLimiter,
-		subscriptionInterceptor,
+		//subscriptionInterceptor,
 		interceptors.NewRecoveryInterceptor(deps.Logger),
 		interceptors.NewLoggingInterceptor(deps.Logger),
 		interceptors.NewAuthInterceptor(jwtSecret, publicProcedures...),
@@ -72,10 +74,10 @@ func SetupRouter(deps *Dependencies) http.Handler {
 	registerConnectRoutes(mux, deps, interceptorChain)
 
 	// Register Webhooks
-	if deps.PaymentService != nil {
-		mux.Handle("/webhooks/stripe", payment.WebhookHandler(deps.PaymentService, deps.Logger))
-		deps.Logger.Info("registered webhook", "path", "/webhooks/stripe")
-	}
+	//if deps.PaymentService != nil {
+	//	mux.Handle("/webhooks/stripe", payment.WebhookHandler(deps.PaymentService, deps.Logger))
+	//	deps.Logger.Info("registered webhook", "path", "/webhooks/stripe")
+	//}
 
 	// Register health and metrics routes
 	registerUtilityRoutes(mux, deps)
@@ -127,87 +129,10 @@ func registerConnectRoutes(mux *http.ServeMux, deps *Dependencies, opts connect.
 	mux.Handle(authServicePath, authServiceHandler)
 	deps.Logger.Info("registered Connect RPC service", "path", authServicePath)
 
-	if deps.ChatHandler != nil {
-		chatPath, chatHandler := chatconnect.NewChatServiceHandler(deps.ChatHandler, opts)
-		mux.Handle(chatPath, chatHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", chatPath)
-	}
-
-	if deps.DiscoverHandler != nil {
-		discoverPath, discoverHandler := discoverconnect.NewDiscoverServiceHandler(deps.DiscoverHandler, opts)
-		mux.Handle(discoverPath, discoverHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", discoverPath)
-	}
-
-	if deps.ProfileHandler != nil {
-		profilePath, profileHandler := profileconnect.NewProfileServiceHandler(deps.ProfileHandler, opts)
-		mux.Handle(profilePath, profileHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", profilePath)
-	}
-
-	if deps.ItineraryHandler != nil {
-		itineraryPath, itineraryHandler := itineraryconnect.NewItineraryServiceHandler(deps.ItineraryHandler, opts)
-		mux.Handle(itineraryPath, itineraryHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", itineraryPath)
-	}
-
-	if deps.StatisticsHandler != nil {
-		statsPath, statsHandler := statisticsv1connect.NewStatisticsServiceHandler(deps.StatisticsHandler, opts)
-		mux.Handle(statsPath, statsHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", statsPath)
-	}
-
-	if deps.RecentsHandler != nil {
-		recentsPath, recentsHandler := recentsv1connect.NewRecentsServiceHandler(deps.RecentsHandler, opts)
-		mux.Handle(recentsPath, recentsHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", recentsPath)
-	}
-
 	if deps.UserHandler != nil {
 		userPath, userHandler := userconnect.NewUserServiceHandler(deps.UserHandler, opts)
 		mux.Handle(userPath, userHandler)
 		deps.Logger.Info("registered Connect RPC service", "path", userPath)
-	}
-
-	if deps.InterestHandler != nil {
-		interestPath, interestHandler := interestconnect.NewInterestServiceHandler(deps.InterestHandler, opts)
-		mux.Handle(interestPath, interestHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", interestPath)
-	}
-
-	if deps.TagsHandler != nil {
-		tagsPath, tagsHandler := tagsv1connect.NewTagsServiceHandler(deps.TagsHandler, opts)
-		mux.Handle(tagsPath, tagsHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", tagsPath)
-	}
-
-	if deps.PaymentHandler != nil {
-		paymentPath, paymentHandler := paymentv1connect.NewPaymentServiceHandler(deps.PaymentHandler, opts)
-		mux.Handle(paymentPath, paymentHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", paymentPath)
-	}
-
-	if deps.FavoritesHandler != nil {
-		favoritesPath, favoritesHandler := favoritesv1connect.NewFavoritesServiceHandler(deps.FavoritesHandler, opts)
-		mux.Handle(favoritesPath, favoritesHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", favoritesPath)
-	}
-
-	if deps.ExportHandler != nil {
-		exportPath, exportHandler := exportv1connect.NewExportServiceHandler(deps.ExportHandler, opts)
-		mux.Handle(exportPath, exportHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", exportPath)
-	}
-
-	if deps.ShareHandler != nil {
-		// Register ShareService RPC
-		sharePath, shareHandler := sharev1connect.NewShareServiceHandler(deps.ShareHandler, opts)
-		mux.Handle(sharePath, shareHandler)
-		deps.Logger.Info("registered Connect RPC service", "path", sharePath)
-
-		// Register OG meta HTTP handler for social sharing
-		mux.Handle("/share/", deps.ShareHandler.OGMetaHandler())
-		deps.Logger.Info("registered OG meta handler", "path", "/share/")
 	}
 
 	deps.Logger.Info("Connect RPC routes configured")
