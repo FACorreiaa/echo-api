@@ -3,11 +3,11 @@ module github.com/FACorreiaa/smart-finance-tracker
 go 1.25.5
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20251209175733-2a1774d88802.1
+	buf.build/gen/go/echo-tracker/echo/connectrpc/go v1.19.1-20251217160626-cf5746a6bde6.2
+	buf.build/gen/go/echo-tracker/echo/protocolbuffers/go v1.36.11-20251217160626-cf5746a6bde6.1
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/cors v0.1.0
 	connectrpc.com/validate v0.6.0
-	github.com/FACorreiaa/smart-finance-tracker-proto v0.0.0-20251215202521-989eba36f688
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/sessions v1.4.0
@@ -27,6 +27,7 @@ require (
 )
 
 require (
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20251209175733-2a1774d88802.1 // indirect
 	buf.build/go/protovalidate v1.1.0 // indirect
 	cel.dev/expr v0.25.1 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
@@ -74,5 +75,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251213004720-97cd9d5aeac2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/FACorreiaa/smart-finance-tracker-proto => ../Echo-proto

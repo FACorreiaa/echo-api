@@ -5,6 +5,12 @@
 		},
 		{
 			"path": "../../../Echo-proto"
+		},
+		{
+			"path": "../../../echolanding"
+		},
+		{
+			"path": "../../../EchoApp"
 		}
 	],
 	"settings": {}

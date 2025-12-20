@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"golang.org/x/time/rate"
 
-	"github.com/FACorreiaa/smart-finance-tracker-proto/gen/go/echo/v1/echov1connect"
+	"buf.build/gen/go/echo-tracker/echo/connectrpc/go/echo/v1/echov1connect"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/interceptors"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/observability"
 )

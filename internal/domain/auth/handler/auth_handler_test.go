@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	echov1 "buf.build/gen/go/echo-tracker/echo/protocolbuffers/go/echo/v1"
 	"connectrpc.com/connect"
-	echov1 "github.com/FACorreiaa/smart-finance-tracker-proto/gen/go/echo/v1"
 
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/repository"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/service"

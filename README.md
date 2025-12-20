@@ -314,6 +314,14 @@ Hard parts (and the opportunity): bank data quality, trust/security, compliance,
 - Minimize storage of tokens/secrets; prefer aggregator tokenization patterns.
 - Default shareables to aggregate stats; never include merchant names without explicit user choice.
 
+## Study
+Echo Pillar	App to Study	Key Insight to "Steal"			
+Pillar 1: Wrapped	Monzo / Spotify	Use "Archetypes" and non-sensitive stats to make it shareable.			
+Pillar 3: Foundation	Monarch Money	The way they handle "Sanity Checks" on net worth data.			
+Pillar 6: Automation	Sequence	The visual "Nodes and Edges" UI for money movement.			
+BYOS Feature	Tiller Money	Their field-mapping logic (Canonical Data → User Sheet).			
+Subscriptions	Rocket Money	The "One-tap" cancellation checklist UI.
+
 ## Status
 
 This repository is an early-stage scaffold. The README defines the **product + technical direction** for EchoAPI.

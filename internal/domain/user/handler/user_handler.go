@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"buf.build/gen/go/echo-tracker/echo/connectrpc/go/echo/v1/echov1connect"
+	echov1 "buf.build/gen/go/echo-tracker/echo/protocolbuffers/go/echo/v1"
 	"connectrpc.com/connect"
-	echov1 "github.com/FACorreiaa/smart-finance-tracker-proto/gen/go/echo/v1"
-	"github.com/FACorreiaa/smart-finance-tracker-proto/gen/go/echo/v1/echov1connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/google/uuid"
