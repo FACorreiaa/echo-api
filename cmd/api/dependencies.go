@@ -10,8 +10,12 @@ import (
 
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/handler"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/repository"
-
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/service"
+
+	financehandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/finance/handler"
+	importrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/repository"
+	importservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/service"
+
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/config"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/db"
 )
@@ -23,16 +27,20 @@ type Dependencies struct {
 	Logger *slog.Logger
 
 	// Repositories
-	AuthRepo repository.AuthRepository
-	UserRepo user.UserRepo
+	AuthRepo   repository.AuthRepository
+	UserRepo   user.UserRepo
+	ImportRepo importrepo.ImportRepository
+
 	// Services
-	TokenManager service.TokenManager
-	AuthService  *service.AuthService
-	UserSvc      user.UserService
+	TokenManager  service.TokenManager
+	AuthService   *service.AuthService
+	UserSvc       user.UserService
+	ImportService *importservice.ImportService
 
 	// Handlers
-	AuthHandler *handler.AuthHandler
-	UserHandler *userhandler.UserHandler
+	AuthHandler    *handler.AuthHandler
+	UserHandler    *userhandler.UserHandler
+	FinanceHandler *financehandler.FinanceHandler
 }
 
 // InitDependencies initializes all application dependencies
@@ -94,6 +102,7 @@ func (d *Dependencies) initDatabase() error {
 // initRepositories initializes all repository layer dependencies
 func (d *Dependencies) initRepositories() error {
 	d.AuthRepo = repository.NewPostgresAuthRepository(d.DB.Pool)
+	d.ImportRepo = importrepo.NewPostgresImportRepository(d.DB.Pool)
 
 	d.Logger.Info("repositories initialized")
 	return nil
@@ -120,17 +129,16 @@ func (d *Dependencies) initServices() error {
 	)
 
 	d.UserSvc = user.NewUserService(d.UserRepo, d.Logger)
+	d.ImportService = importservice.NewImportService(d.ImportRepo, d.Logger)
 
 	d.Logger.Info("services initialized")
 	return nil
-
-	// Needs imports and struct fields.
-	// Since replace_file_content is single block, I will use multi_replace for this file.
 }
 
 // initHandlers initializes all handler dependencies
 func (d *Dependencies) initHandlers() error {
 	d.AuthHandler = handler.NewAuthHandler(d.AuthService)
+	d.FinanceHandler = financehandler.NewFinanceHandler(d.ImportService)
 
 	d.Logger.Info("handlers initialized")
 	return nil

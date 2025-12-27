@@ -130,6 +130,12 @@ func registerConnectRoutes(mux *http.ServeMux, deps *Dependencies, opts connect.
 		deps.Logger.Info("registered Connect RPC service", "path", userPath)
 	}
 
+	if deps.FinanceHandler != nil {
+		financePath, financeHandler := echov1connect.NewFinanceServiceHandler(deps.FinanceHandler, opts)
+		mux.Handle(financePath, financeHandler)
+		deps.Logger.Info("registered Connect RPC service", "path", financePath)
+	}
+
 	deps.Logger.Info("Connect RPC routes configured")
 }
 
