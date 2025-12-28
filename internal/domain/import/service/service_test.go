@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -161,11 +162,12 @@ func TestImportWithMapping_BatchesAndProgress(t *testing.T) {
 		IsEuropeanFormat: false,
 	}
 
-	repo := &fakeImportRepo{}
+	repo := &fakeImportRepo{accountCurrency: "USD"}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := NewImportService(repo, logger)
 
-	result, err := svc.ImportWithMapping(context.Background(), uuid.New(), nil, []byte(builder.String()), mapping)
+	accountID := uuid.New()
+	result, err := svc.ImportWithMapping(context.Background(), uuid.New(), &accountID, []byte(builder.String()), mapping)
 	if err != nil {
 		t.Fatalf("ImportWithMapping failed: %v", err)
 	}
@@ -340,6 +342,7 @@ type fakeImportRepo struct {
 	mu                sync.Mutex
 	bulkInserts       []int
 	progressSnapshots []progressSnapshot
+	accountCurrency   string
 }
 
 func (f *fakeImportRepo) GetMappingByFingerprint(ctx context.Context, fingerprint string, userID *uuid.UUID) (*repository.BankMapping, error) {
@@ -356,6 +359,10 @@ func (f *fakeImportRepo) UpdateMapping(ctx context.Context, mapping *repository.
 
 func (f *fakeImportRepo) ListUserMappings(ctx context.Context, userID uuid.UUID) ([]*repository.BankMapping, error) {
 	return nil, nil
+}
+
+func (f *fakeImportRepo) GetAccountCurrency(ctx context.Context, userID uuid.UUID, accountID uuid.UUID) (string, error) {
+	return f.accountCurrency, nil
 }
 
 func (f *fakeImportRepo) CreateUserFile(ctx context.Context, file *repository.UserFile) error {
@@ -398,7 +405,7 @@ func (f *fakeImportRepo) FinishImportJob(ctx context.Context, id uuid.UUID, stat
 	return nil
 }
 
-func (f *fakeImportRepo) BulkInsertTransactions(ctx context.Context, userID uuid.UUID, accountID *uuid.UUID, txs []*repository.ParsedTransaction) (int, error) {
+func (f *fakeImportRepo) BulkInsertTransactions(ctx context.Context, userID uuid.UUID, accountID *uuid.UUID, currencyCode string, txs []*repository.ParsedTransaction) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.bulkInserts = append(f.bulkInserts, len(txs))
@@ -419,4 +426,294 @@ func (f *fakeImportRepo) progressCalls() []progressSnapshot {
 	calls := make([]progressSnapshot, len(f.progressSnapshots))
 	copy(calls, f.progressSnapshots)
 	return calls
+}
+
+// ============================================================================
+// Real Bank File Tests
+// ============================================================================
+
+// TestImportRealFile_Revolut tests importing a real Revolut CSV file
+func TestImportRealFile_Revolut(t *testing.T) {
+	data, err := loadTestFile("../../../data/import/account-statement_2019-12-01_2025-12-28_en_e1631a.csv")
+	if err != nil {
+		t.Skipf("Skipping real file test: %v", err)
+	}
+
+	config, err := sniffer.DetectConfig(data)
+	if err != nil {
+		t.Fatalf("DetectConfig failed: %v", err)
+	}
+
+	// Verify detection
+	if config.Delimiter != ',' {
+		t.Errorf("expected comma delimiter, got %c", config.Delimiter)
+	}
+	if len(config.Headers) < 8 {
+		t.Errorf("expected at least 8 headers, got %d: %v", len(config.Headers), config.Headers)
+	}
+
+	// Build mapping from detected suggestions
+	suggestions := sniffer.SuggestColumns(config.Headers)
+
+	// Revolut has: Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+	// Date is column 2 (Started Date), Description is 4, Amount is 5
+	mapping := ColumnMapping{
+		DateCol:          2, // Started Date
+		DescCol:          4, // Description
+		AmountCol:        5, // Amount
+		CategoryCol:      -1,
+		IsDoubleEntry:    suggestions.IsDoubleEntry,
+		IsEuropeanFormat: false, // Revolut uses US number format
+		DateFormat:       "YYYY-MM-DD HH:mm:ss",
+	}
+
+	svc := &ImportService{}
+	results, preErrors := svc.parseTransactionsStream(context.Background(), data, config, mapping)
+	if len(preErrors) != 0 {
+		t.Logf("pre-parse warnings: %v", preErrors)
+	}
+
+	transactions, parseErrors := collectParseResults(results)
+
+	t.Logf("Revolut: Parsed %d transactions, %d errors", len(transactions), len(parseErrors))
+
+	if len(transactions) == 0 {
+		t.Errorf("expected some transactions, got 0")
+	}
+
+	// Sample check - should have some positive and negative amounts
+	hasPositive := false
+	hasNegative := false
+	for _, tx := range transactions {
+		if tx.AmountCents > 0 {
+			hasPositive = true
+		}
+		if tx.AmountCents < 0 {
+			hasNegative = true
+		}
+	}
+	if !hasPositive || !hasNegative {
+		t.Errorf("expected both positive and negative amounts")
+	}
+}
+
+// TestImportRealFile_CaixaPortuguese tests importing a real Portuguese bank CSV file
+func TestImportRealFile_CaixaPortuguese(t *testing.T) {
+	data, err := loadTestFile("../../../data/import/comprovativo.csv")
+	if err != nil {
+		t.Skipf("Skipping real file test: %v", err)
+	}
+
+	// Normalize encoding (Portuguese files often use Latin-1)
+	data = normalizeCSVBytes(data)
+
+	config, err := sniffer.DetectConfig(data)
+	if err != nil {
+		t.Fatalf("DetectConfig failed: %v", err)
+	}
+
+	// Verify detection
+	if config.Delimiter != ';' {
+		t.Errorf("expected semicolon delimiter, got %c", config.Delimiter)
+	}
+	if config.SkipLines < 5 {
+		t.Errorf("expected at least 5 skip lines (metadata), got %d", config.SkipLines)
+	}
+
+	// Build mapping from detected suggestions
+	suggestions := sniffer.SuggestColumns(config.Headers)
+
+	// Caixa has: Data mov. ;Data valor ;Descrição ;Débito ;Crédito ;...
+	mapping := ColumnMapping{
+		DateCol:          suggestions.DateCol,
+		DescCol:          suggestions.DescCol,
+		DebitCol:         suggestions.DebitCol,
+		CreditCol:        suggestions.CreditCol,
+		CategoryCol:      suggestions.CategoryCol,
+		IsDoubleEntry:    true,
+		IsEuropeanFormat: true, // Portuguese uses comma as decimal
+		DateFormat:       "DD-MM-YYYY",
+	}
+
+	if mapping.DateCol < 0 {
+		t.Fatalf("could not detect date column, headers: %v", config.Headers)
+	}
+	if mapping.DescCol < 0 {
+		t.Fatalf("could not detect description column, headers: %v", config.Headers)
+	}
+
+	svc := &ImportService{}
+	results, preErrors := svc.parseTransactionsStream(context.Background(), data, config, mapping)
+	if len(preErrors) != 0 {
+		t.Logf("pre-parse warnings: %v", preErrors)
+	}
+
+	transactions, parseErrors := collectParseResults(results)
+
+	t.Logf("Caixa: Parsed %d transactions, %d errors", len(transactions), len(parseErrors))
+	if len(parseErrors) > 0 && len(parseErrors) < 10 {
+		for _, pe := range parseErrors {
+			t.Logf("  Line %d: %v", pe.lineNum, pe.err)
+		}
+	}
+
+	if len(transactions) == 0 {
+		t.Errorf("expected some transactions, got 0")
+	}
+
+	// Sample check - should have both debits (negative) and credits (positive)
+	hasDebit := false
+	hasCredit := false
+	for _, tx := range transactions {
+		if tx.AmountCents < 0 {
+			hasDebit = true
+		}
+		if tx.AmountCents > 0 {
+			hasCredit = true
+		}
+	}
+	if !hasDebit || !hasCredit {
+		t.Errorf("expected both debit and credit transactions")
+	}
+}
+
+// ============================================================================
+// Real Bank File Benchmarks
+// ============================================================================
+
+func BenchmarkParseTransactionsSequential_Revolut(b *testing.B) {
+	data, config, mapping := loadRevolutFixture(b)
+	svc := &ImportService{}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		transactions, parseErrors := parseTransactionsSequential(svc, data, config, mapping)
+		benchmarkSink = len(transactions) + len(parseErrors)
+	}
+}
+
+func BenchmarkParseTransactionsConcurrent_Revolut(b *testing.B) {
+	data, config, mapping := loadRevolutFixture(b)
+	svc := &ImportService{}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		results, preErrors := svc.parseTransactionsStream(context.Background(), data, config, mapping)
+		txCount := 0
+		errCount := len(preErrors)
+		for result := range results {
+			if result.err != nil {
+				errCount++
+				continue
+			}
+			txCount++
+		}
+		benchmarkSink = txCount + errCount
+	}
+}
+
+func BenchmarkParseTransactionsSequential_Caixa(b *testing.B) {
+	data, config, mapping := loadCaixaFixture(b)
+	svc := &ImportService{}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		transactions, parseErrors := parseTransactionsSequential(svc, data, config, mapping)
+		benchmarkSink = len(transactions) + len(parseErrors)
+	}
+}
+
+func BenchmarkParseTransactionsConcurrent_Caixa(b *testing.B) {
+	data, config, mapping := loadCaixaFixture(b)
+	svc := &ImportService{}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		results, preErrors := svc.parseTransactionsStream(context.Background(), data, config, mapping)
+		txCount := 0
+		errCount := len(preErrors)
+		for result := range results {
+			if result.err != nil {
+				errCount++
+				continue
+			}
+			txCount++
+		}
+		benchmarkSink = txCount + errCount
+	}
+}
+
+// ============================================================================
+// Helper functions for real file tests
+// ============================================================================
+
+func loadTestFile(relativePath string) ([]byte, error) {
+	return os.ReadFile(relativePath)
+}
+
+func loadRevolutFixture(b *testing.B) ([]byte, *sniffer.FileConfig, ColumnMapping) {
+	b.Helper()
+	data, err := loadTestFile("../../../data/import/account-statement_2019-12-01_2025-12-28_en_e1631a.csv")
+	if err != nil {
+		b.Skipf("Skipping benchmark: %v", err)
+	}
+
+	config, err := sniffer.DetectConfig(data)
+	if err != nil {
+		b.Fatalf("DetectConfig failed: %v", err)
+	}
+
+	mapping := ColumnMapping{
+		DateCol:          2, // Started Date
+		DescCol:          4, // Description
+		AmountCol:        5, // Amount
+		CategoryCol:      -1,
+		IsDoubleEntry:    false,
+		IsEuropeanFormat: false,
+		DateFormat:       "YYYY-MM-DD HH:mm:ss",
+	}
+
+	return data, config, mapping
+}
+
+func loadCaixaFixture(b *testing.B) ([]byte, *sniffer.FileConfig, ColumnMapping) {
+	b.Helper()
+	data, err := loadTestFile("../../../data/import/comprovativo.csv")
+	if err != nil {
+		b.Skipf("Skipping benchmark: %v", err)
+	}
+
+	data = normalizeCSVBytes(data)
+
+	config, err := sniffer.DetectConfig(data)
+	if err != nil {
+		b.Fatalf("DetectConfig failed: %v", err)
+	}
+
+	suggestions := sniffer.SuggestColumns(config.Headers)
+
+	mapping := ColumnMapping{
+		DateCol:          suggestions.DateCol,
+		DescCol:          suggestions.DescCol,
+		DebitCol:         suggestions.DebitCol,
+		CreditCol:        suggestions.CreditCol,
+		CategoryCol:      suggestions.CategoryCol,
+		IsDoubleEntry:    true,
+		IsEuropeanFormat: true,
+		DateFormat:       "DD-MM-YYYY",
+	}
+
+	return data, config, mapping
 }

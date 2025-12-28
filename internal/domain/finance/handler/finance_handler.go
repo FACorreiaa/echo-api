@@ -4,7 +4,9 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -63,9 +65,17 @@ func (h *FinanceHandler) ImportTransactionsCsv(
 	mapping := h.protoMappingToService(req.Msg.Mapping, req.Msg.DateFormat)
 
 	// Perform import
-	result, err := h.importSvc.ImportWithMapping(ctx, userID, accountID, req.Msg.CsvBytes, mapping)
+	result, err := h.importSvc.ImportWithOptions(ctx, userID, accountID, req.Msg.CsvBytes, mapping, importservice.ImportOptions{
+		HeaderRows: int(req.Msg.HeaderRows),
+		Timezone:   req.Msg.Timezone,
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	if result.RowsImported == 0 && len(result.Errors) > 0 {
+		errMsg := formatImportErrors(result.Errors)
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(errMsg))
 	}
 
 	return connect.NewResponse(&echov1.ImportTransactionsCsvResponse{
@@ -78,14 +88,14 @@ func (h *FinanceHandler) protoMappingToService(protoMapping *echov1.CsvMapping, 
 	// Default mapping if none provided
 	if protoMapping == nil {
 		return importservice.ColumnMapping{
-			DateCol:          0,
-			DescCol:          1,
-			AmountCol:        2,
+			DateCol:          -1,
+			DescCol:          -1,
+			AmountCol:        -1,
 			CategoryCol:      -1,
 			DebitCol:         -1,
 			CreditCol:        -1,
 			IsDoubleEntry:    false,
-			IsEuropeanFormat: true, // Default to European format
+			IsEuropeanFormat: true, // Default to European for Portuguese/EU banks
 			DateFormat:       dateFormat,
 		}
 	}
@@ -109,7 +119,7 @@ func (h *FinanceHandler) protoMappingToService(protoMapping *echov1.CsvMapping, 
 		DebitCol:         debitCol,
 		CreditCol:        creditCol,
 		IsDoubleEntry:    isDoubleEntry,
-		IsEuropeanFormat: true, // Could add to proto if needed
+		IsEuropeanFormat: getIsEuropeanFormat(protoMapping),
 		DateFormat:       dateFormat,
 	}
 }
@@ -125,4 +135,34 @@ func parseColumnIndex(col string) int {
 		return -1
 	}
 	return idx
+}
+
+// getIsEuropeanFormat extracts the is_european_format field from the proto.
+// Returns true (European format) as default for backwards compatibility.
+func getIsEuropeanFormat(protoMapping *echov1.CsvMapping) bool {
+	if protoMapping == nil {
+		return true
+	}
+	return protoMapping.GetIsEuropeanFormat()
+}
+
+const maxImportErrorsInResponse = 10
+
+func formatImportErrors(errors []string) string {
+	if len(errors) == 0 {
+		return "import failed: no valid rows"
+	}
+
+	limit := len(errors)
+	if limit > maxImportErrorsInResponse {
+		limit = maxImportErrorsInResponse
+	}
+
+	message := fmt.Sprintf("import failed: %d error(s). ", len(errors))
+	message += strings.Join(errors[:limit], "; ")
+	if limit < len(errors) {
+		message += fmt.Sprintf(" (and %d more)", len(errors)-limit)
+	}
+
+	return message
 }

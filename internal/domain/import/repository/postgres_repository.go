@@ -140,6 +140,26 @@ func (r *PostgresImportRepository) ListUserMappings(ctx context.Context, userID 
 	return mappings, nil
 }
 
+// GetAccountCurrency retrieves the account currency for a user/account pair.
+func (r *PostgresImportRepository) GetAccountCurrency(ctx context.Context, userID uuid.UUID, accountID uuid.UUID) (string, error) {
+	query := `
+		SELECT currency_code
+		FROM accounts
+		WHERE id = $1 AND user_id = $2 AND is_active = TRUE
+	`
+
+	var currency string
+	err := r.pool.QueryRow(ctx, query, accountID, userID).Scan(&currency)
+	if err == pgx.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get account currency: %w", err)
+	}
+
+	return currency, nil
+}
+
 // CreateUserFile inserts a new user file record
 func (r *PostgresImportRepository) CreateUserFile(ctx context.Context, file *UserFile) error {
 	if file.ID == uuid.Nil {
@@ -257,7 +277,7 @@ func (r *PostgresImportRepository) FinishImportJob(ctx context.Context, id uuid.
 	query := `
 		UPDATE import_jobs SET
 			status = $2, rows_imported = $3, rows_failed = $4,
-			error_message = $5, finished_at = NOW(), rows_total = $3 + $4
+			error_message = $5, finished_at = NOW(), rows_total = $3::int + $4::int
 		WHERE id = $1
 	`
 	_, err := r.pool.Exec(ctx, query, id, status, rowsImported, rowsFailed, errorMessage)
@@ -268,7 +288,7 @@ func (r *PostgresImportRepository) FinishImportJob(ctx context.Context, id uuid.
 }
 
 // BulkInsertTransactions inserts multiple transactions efficiently
-func (r *PostgresImportRepository) BulkInsertTransactions(ctx context.Context, userID uuid.UUID, accountID *uuid.UUID, txs []*ParsedTransaction) (int, error) {
+func (r *PostgresImportRepository) BulkInsertTransactions(ctx context.Context, userID uuid.UUID, accountID *uuid.UUID, currencyCode string, txs []*ParsedTransaction) (int, error) {
 	if len(txs) == 0 {
 		return 0, nil
 	}
@@ -291,7 +311,7 @@ func (r *PostgresImportRepository) BulkInsertTransactions(ctx context.Context, u
 				tx.Description, // description
 				tx.Description, // original_description
 				tx.AmountCents, // amount_minor
-				"EUR",          // currency_code (default, could be configurable)
+				currencyCode,   // currency_code
 				"csv",          // source
 				externalID,     // external_id
 			}, nil

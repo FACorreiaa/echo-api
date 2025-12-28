@@ -12,6 +12,7 @@ import (
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/repository"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/auth/service"
 	financehandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/finance/handler"
+	importhandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/handler"
 	importrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/repository"
 	importservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/service"
 
@@ -40,6 +41,7 @@ type Dependencies struct {
 	AuthHandler    *handler.AuthHandler
 	UserHandler    *userhandler.UserHandler
 	FinanceHandler *financehandler.FinanceHandler
+	ImportHandler  *importhandler.ImportHandler
 }
 
 // InitDependencies initializes all application dependencies
@@ -138,6 +140,7 @@ func (d *Dependencies) initServices() error {
 func (d *Dependencies) initHandlers() error {
 	d.AuthHandler = handler.NewAuthHandler(d.AuthService)
 	d.FinanceHandler = financehandler.NewFinanceHandler(d.ImportService)
+	d.ImportHandler = importhandler.NewImportHandler(d.ImportService, d.Logger)
 
 	d.Logger.Info("handlers initialized")
 	return nil

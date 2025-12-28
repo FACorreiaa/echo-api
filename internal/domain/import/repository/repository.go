@@ -77,6 +77,9 @@ type ImportRepository interface {
 	UpdateMapping(ctx context.Context, mapping *BankMapping) error
 	ListUserMappings(ctx context.Context, userID uuid.UUID) ([]*BankMapping, error)
 
+	// Accounts
+	GetAccountCurrency(ctx context.Context, userID uuid.UUID, accountID uuid.UUID) (string, error)
+
 	// User Files
 	CreateUserFile(ctx context.Context, file *UserFile) error
 	GetUserFileByID(ctx context.Context, id uuid.UUID) (*UserFile, error)
@@ -89,5 +92,5 @@ type ImportRepository interface {
 	FinishImportJob(ctx context.Context, id uuid.UUID, status string, rowsImported, rowsFailed int, errorMessage *string) error
 
 	// Transactions (bulk insert for imported data)
-	BulkInsertTransactions(ctx context.Context, userID uuid.UUID, accountID *uuid.UUID, txs []*ParsedTransaction) (int, error)
+	BulkInsertTransactions(ctx context.Context, userID uuid.UUID, accountID *uuid.UUID, currencyCode string, txs []*ParsedTransaction) (int, error)
 }
