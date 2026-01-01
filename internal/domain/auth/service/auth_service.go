@@ -550,3 +550,13 @@ func generateUsername(nickname, email string) string {
 func generateShortID() string {
 	return uuid.New().String()[:8]
 }
+
+// UpdatePushToken stores or updates the expo push token for a user.
+func (s *AuthService) UpdatePushToken(ctx context.Context, userIDStr, pushToken string) error {
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	return s.repo.UpdateExpoPushToken(ctx, userID, pushToken)
+}

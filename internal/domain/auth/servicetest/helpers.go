@@ -254,6 +254,14 @@ func (m *MockAuthRepo) CreateUserWithPhone(_ context.Context, phone, username st
 	return CloneUser(user), nil
 }
 
+func (m *MockAuthRepo) UpdateExpoPushToken(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
+func (m *MockAuthRepo) GetExpoPushToken(_ context.Context, _ uuid.UUID) (string, error) {
+	return "", nil
+}
+
 // NewTestAuthService bundles the mocks with a configured AuthService.
 func NewTestAuthService() (*service.AuthService, *MockAuthRepo, *MockTokenManager, *MockEmailSender) {
 	repo := NewMockAuthRepo()

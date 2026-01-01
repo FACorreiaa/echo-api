@@ -72,4 +72,8 @@ type AuthRepository interface {
 
 	CreateOrUpdateOAuthIdentity(ctx context.Context, providerName, providerUserID string, userID uuid.UUID, accessToken, refreshToken *string) error
 	GetUserByOAuthIdentity(ctx context.Context, providerName, providerUserID string) (*User, error)
+
+	// Push notifications
+	UpdateExpoPushToken(ctx context.Context, userID uuid.UUID, pushToken string) error
+	GetExpoPushToken(ctx context.Context, userID uuid.UUID) (string, error)
 }

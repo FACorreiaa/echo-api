@@ -311,35 +311,44 @@ func (r *PostgresImportRepository) BulkInsertTransactions(ctx context.Context, u
 		}
 		batch := txs[i:end]
 
-		// Build batch insert query (12 columns now including institution_name)
+		// Build batch insert query (14 columns now including merchant_name and category_id)
 		query := `
-			INSERT INTO transactions (id, user_id, account_id, posted_at, description, original_description, amount_minor, currency_code, source, external_id, import_job_id, institution_name)
+			INSERT INTO transactions (id, user_id, account_id, posted_at, description, original_description, merchant_name, amount_minor, currency_code, source, external_id, import_job_id, institution_name, category_id)
 			VALUES `
 
-		args := make([]any, 0, len(batch)*12)
+		args := make([]any, 0, len(batch)*14)
 		for j, tx := range batch {
 			if j > 0 {
 				query += ", "
 			}
 			externalID := generateExternalID(tx)
-			argOffset := j * 12
-			query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			argOffset := j * 14
+			query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
 				argOffset+1, argOffset+2, argOffset+3, argOffset+4, argOffset+5,
-				argOffset+6, argOffset+7, argOffset+8, argOffset+9, argOffset+10, argOffset+11, argOffset+12)
+				argOffset+6, argOffset+7, argOffset+8, argOffset+9, argOffset+10,
+				argOffset+11, argOffset+12, argOffset+13, argOffset+14)
+
+			// Use MerchantName if set, otherwise fall back to Description
+			merchantName := tx.MerchantName
+			if merchantName == "" {
+				merchantName = tx.Description
+			}
 
 			args = append(args,
 				uuid.New(),     // id
 				userID,         // user_id
 				accountID,      // account_id
 				tx.Date,        // posted_at
-				tx.Description, // description
+				tx.Description, // description (raw)
 				tx.Description, // original_description
+				merchantName,   // merchant_name (cleaned)
 				tx.AmountCents, // amount_minor
 				currencyCode,   // currency_code
 				"csv",          // source
 				externalID,     // external_id
 				importJobID,    // import_job_id
 				instNamePtr,    // institution_name
+				tx.CategoryID,  // category_id
 			)
 		}
 

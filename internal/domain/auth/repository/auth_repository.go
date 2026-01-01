@@ -377,3 +377,24 @@ func (r *PostgresAuthRepository) CreateUserWithPhone(ctx context.Context, phone,
 
 	return user, nil
 }
+
+// UpdateExpoPushToken updates or sets the expo push token for a user
+func (r *PostgresAuthRepository) UpdateExpoPushToken(ctx context.Context, userID uuid.UUID, pushToken string) error {
+	query := `UPDATE users SET expo_push_token = $1, updated_at = $2 WHERE id = $3`
+	_, err := r.pgpool.Exec(ctx, query, pushToken, time.Now(), userID)
+	return err
+}
+
+// GetExpoPushToken retrieves the expo push token for a user
+func (r *PostgresAuthRepository) GetExpoPushToken(ctx context.Context, userID uuid.UUID) (string, error) {
+	query := `SELECT expo_push_token FROM users WHERE id = $1`
+	var token *string
+	err := r.pgpool.QueryRow(ctx, query, userID).Scan(&token)
+	if err != nil {
+		return "", err
+	}
+	if token == nil {
+		return "", nil
+	}
+	return *token, nil
+}

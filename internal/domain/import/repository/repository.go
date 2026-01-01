@@ -62,11 +62,13 @@ type UserFile struct {
 
 // ParsedTransaction represents a transaction extracted from a file
 type ParsedTransaction struct {
-	Date        time.Time
-	Description string
-	AmountCents int64 // Signed: negative for expenses, positive for income
-	Category    string
-	ExternalID  string // For deduplication (e.g., row hash)
+	Date         time.Time
+	Description  string
+	MerchantName string     // Cleaned merchant name from categorization
+	AmountCents  int64      // Signed: negative for expenses, positive for income
+	Category     string     // Raw category from CSV
+	CategoryID   *uuid.UUID // Resolved category ID from categorization engine
+	ExternalID   string     // For deduplication (e.g., row hash)
 }
 
 // ImportRepository defines data access operations for imports

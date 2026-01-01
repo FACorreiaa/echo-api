@@ -337,3 +337,96 @@ Once implementation lands, this section will include exact commands. Expected pr
 - Go (toolchain version TBD)
 - Postgres
 - Buf (for Protobuf/Connect generation)
+
+## TODO Excel
+
+To transition Echo from a simple tracker to a **"Bring Your Own Spreadsheet" (BYOS)** Operating System, you need to stop treating Excel as just a data source and start treating it as a **logic template**.
+
+Here are the guidelines to address the two distinct Excel use cases while keeping your "Alive" OS promise.
+
+---
+
+### **Guideline 1: The Unified Ingestion Layer**
+
+Your Go backend shouldn't care if the file is CSV, TSV, or XLSX. Use the **Strategy Pattern**.
+
+1. **Library:** Use `github.com/qax-os/excelize/v2` for Go. It is the gold standard for performance and formula handling.
+2. **The "Probe":** When an `.xlsx` is uploaded, your "Sniffer" checks:
+* Does it have a single large table?  **Type 1 (Transactions)**.
+* Does it have multiple small tables, colors, and formulas (e.g., `SUM`, `VLOOKUP`)?  **Type 2 (The Plan)**.
+
+
+
+---
+
+### **Guideline 2: Handling Type 1 (The "Silent" Transaction Import)**
+
+This should behave exactly like your CSV import to maintain consistency.
+
+* **Sheet Selection:** Since Excel has tabs, the React Native UI must ask: *"Which sheet contains your transactions?"*
+* **Normalization:** Reuse the **Fingerprint + Mapping** logic. Treat each row in the Excel sheet as a CSV line.
+* **Performance:** Even for Excel, use your **Worker Pool** pattern. `excelize` allows you to stream rows (`GetRows`) to keep memory low on your Apple M3 Pro.
+
+---
+
+### **Guideline 3: Handling Type 2 (The BYOS "Living" Plan)**
+
+This is the "moat" that makes Echo unique. Instead of rebuilding their formulas in Go, you **host their logic**.
+
+#### **A. The "Named Range" Strategy**
+
+Don't try to parse the whole sheet. Ask the user to define **Named Ranges** or specific cells for Echo to interact with:
+
+* **Input Ranges:** Where Echo "injects" its canonical data (e.g., a table called `Echo_Transactions`).
+* **Output Ranges:** Where the user's formulas calculate results (e.g., a cell called `Total_Budget_Remaining`).
+
+#### **B. The "Formula Evaluator"**
+
+To let users edit the plan *in-app* without a full Excel engine:
+
+* **Frontend (React Native):** Use a library like **`hyperformula`** (by Handsontable). It is a headless spreadsheet cell executor that runs in JavaScript.
+* **Workflow:** 1. Echo loads the user's `.xlsx` values and formulas into `hyperformula`.
+2. When a user changes a number in the Tamagui UI, `hyperformula` re-calculates the rest of the "Plan" instantly.
+3. The UI updates the "Alive" stats.
+
+---
+
+### **Guideline 4: The "Spreadsheet-to-UI" Mapping**
+
+Users don't want to look at a grid on a phone. They want a "Dashboard" powered by their spreadsheet.
+
+1. **Map Formulas to Widgets:** * User selects cell `B10` in their Excel (which calculates "Monthly Runway").
+* Echo turns that into a **Tamagui Bento Card** on the home screen.
+
+
+2. **Bi-directional Sync:**
+* If the user edits their "Rent" budget in Echo, it writes the value back to the virtual spreadsheet, triggers the formulas, and updates the "Runway" card.
+
+
+
+---
+
+### **Guideline 5: Technical Constraints (Safety First)**
+
+To keep the OS stable, enforce these "Design Constraints":
+
+1. **No Macros/VBA:** Explicitly block files containing `.xlsm` macros. They are a security risk and won't run on mobile.
+2. **Static Logic:** The formulas should be deterministic.
+3. **Export as Source of Truth:** Every time the user makes a major change, Echo should allow them to export the "Updated" `.xlsx` so they never feel locked into your app.
+
+---
+
+### **The "Alive" Action Plan**
+
+| Feature | Implementation |
+| --- | --- |
+| **Parsing** | Go (`excelize`) extracts values and formula strings. |
+| **Logic Engine** | React Native (`hyperformula`) runs the math on-device for instant feedback. |
+| **Persistence** | Store the `.xlsx` file in S3/Cloud Storage and the "Mapping Metadata" in Postgres. |
+| **UI** | A "Template Gallery" where users can see how their Excel logic looks as "Echo Bento Cards." |
+
+### **Why this works:**
+
+You aren't replacing Excel; you are giving Excel a **Mobile Shell**. The user keeps their complex formulas (The "Brain"), and Echo provides the data and the beautiful UI (The "Body").
+
+**Next Step:** Implement the Go service to extract both **Values** and **Raw Formula Strings** from a sample `.xlsx` using `excelize`. This will prove you can "read the mind" of the user's spreadsheet.

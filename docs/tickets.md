@@ -287,3 +287,122 @@ Legend:
   - [ ] Update `/health/details` in `cmd/api/router.go` to warn only.
   - [ ] Update README or config docs if needed.
 - Acceptance: server starts without GEMINI variables and health shows a warning only.
+
+---
+
+## Alive OS — The "Clean Room" (Categorization)
+
+### CAT-001: Create category_rules table + migration
+- Priority: P0
+- Labels: MVP, Normalization, AliveOS
+- Problem: No system for learned categorization rules.
+- Subtasks:
+  - [x] Create migration `0011_add_category_rules.up.sql` with `category_rules` table.
+  - [x] Add user_id, match_pattern, clean_name, assigned_category_id, is_recurring fields.
+  - [x] Add index on (user_id, match_pattern).
+- Acceptance: Migration runs and table exists.
+
+### CAT-002: Categorization engine service
+- Priority: P0
+- Labels: MVP, Normalization, AliveOS
+- Problem: Transactions are imported without auto-categorization.
+- Subtasks:
+  - [ ] Create `internal/domain/categorization/` domain.
+  - [ ] Implement `CategorizationService.Categorize(description) -> (cleanName, categoryID)`.
+  - [ ] Match against user rules first, then global defaults.
+  - [ ] Wire into import flow after parsing.
+- Acceptance: Imported transactions have merchant_name and category_id populated.
+
+### CAT-003: "Remember this" learning flow
+- Priority: P1
+- Labels: MVP, Normalization, AliveOS
+- Problem: Users can't teach Echo their preferences.
+- Subtasks:
+  - [ ] Add RPC `CreateCategoryRule(pattern, cleanName, categoryID, applyToExisting)`.
+  - [ ] If `applyToExisting`, update matching transactions.
+  - [ ] Add UI prompt: "Should I remember this for all future X transactions?"
+- Acceptance: New rule persists and applies to future imports.
+
+---
+
+## Alive OS — The "Pulse" (Insights)
+
+### PUL-001: Spending Pulse query
+- Priority: P0
+- Labels: MVP, Insights, AliveOS
+- Problem: No comparative spending data.
+- Subtasks:
+  - [ ] Create `internal/domain/insights/` domain.
+  - [ ] Implement `GetSpendingPulse(userID, asOf)` returning current/last spend, pace %.
+  - [ ] Add "surprise expense" detection (highest tx not in last month).
+- Acceptance: Query returns accurate month-over-month comparison.
+
+### PUL-002: Pace alert system
+- Priority: P1
+- Labels: MVP, Insights, AliveOS
+- Problem: Users don't know if they're overspending until month end.
+- Subtasks:
+  - [ ] Calculate pace: current_spend / (last_month_spend * day_of_month/30).
+  - [ ] Generate alert when pace > 1.2 (20% over).
+  - [ ] Store alerts in `monthly_insights` or new `alerts` table.
+- Acceptance: Alert triggers when spending pace exceeds threshold.
+
+### PUL-003: Dashboard Bento Grid endpoint
+- Priority: P1
+- Labels: MVP, Insights, AliveOS
+- Problem: Dashboard needs actionable blocks, not just lists.
+- Subtasks:
+  - [ ] Create `GetDashboardBlocks` RPC returning 3 blocks.
+  - [ ] Block 1: Status ("You have X left to stay under last month").
+  - [ ] Block 2: Hook ("You've visited Starbucks 12 times").
+  - [ ] Block 3: CTA ("4 transactions need category").
+- Acceptance: Frontend can render bento grid from response.
+
+---
+
+## Alive OS — Mini-Wrapped
+
+### WRP-001: Monthly highlights generator
+- Priority: P1
+- Labels: MVP, Wrapped, AliveOS
+- Problem: No monthly summary generation.
+- Subtasks:
+  - [ ] Create `internal/domain/wrapped/` domain.
+  - [ ] Generate top merchant, anomaly category, archetype badge.
+  - [ ] Store in `wrapped_summaries` table.
+- Acceptance: Monthly wrap generates for users with data.
+
+### WRP-002: Archetype assignment
+- Priority: P2
+- Labels: MVP, Wrapped, AliveOS
+- Problem: No personality-based summaries.
+- Subtasks:
+  - [ ] Define archetype rules ("The Commuter", "The Chef", etc.).
+  - [ ] Assign based on spending patterns.
+  - [ ] Include in wrap response.
+- Acceptance: Users receive relevant archetype based on data.
+
+---
+
+## Alive OS — Staging to Action
+
+### STG-001: Transaction review queue
+- Priority: P1
+- Labels: MVP, AliveOS
+- Problem: Users can't review individual transactions post-import.
+- Subtasks:
+  - [ ] Add `review_status` column to transactions (pending, reviewed, flagged).
+  - [ ] Add `ListPendingReview` RPC.
+  - [ ] Add `ApproveTransaction`, `FlagTransaction` RPCs.
+- Acceptance: Users can review and approve imported transactions.
+
+### STG-002: Task generation for action items
+- Priority: P2
+- Labels: MVP, AliveOS
+- Problem: No actionable tasks from transaction data.
+- Subtasks:
+  - [ ] Create `user_tasks` table (transaction_id, task_type, description, status).
+  - [ ] Auto-generate tasks: "Call bank to waive fee", "Review subscription".
+  - [ ] Add `ListTasks`, `CompleteTask` RPCs.
+- Acceptance: High-fee transactions generate review tasks.
+

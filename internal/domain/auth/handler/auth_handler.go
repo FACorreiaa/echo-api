@@ -188,6 +188,28 @@ func metadataFromRequest[T any](req *connect.Request[T]) service.SessionMetadata
 	}
 }
 
+// RegisterPushToken stores a push notification token for the authenticated user.
+func (h *AuthHandler) RegisterPushToken(
+	ctx context.Context,
+	req *connect.Request[echov1.RegisterPushTokenRequest],
+) (*connect.Response[echov1.RegisterPushTokenResponse], error) {
+	userIDStr, ok := getContextValue(ctx, "user_id")
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	if req.Msg.PushToken == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("push token is required"))
+	}
+
+	err := h.service.UpdatePushToken(ctx, userIDStr, req.Msg.PushToken)
+	if err != nil {
+		return nil, h.toConnectError(err)
+	}
+
+	return connect.NewResponse(&echov1.RegisterPushTokenResponse{}), nil
+}
+
 func (h *AuthHandler) toConnectError(err error) error {
 	switch {
 	case errors.Is(err, common.ErrUserAlreadyExists):

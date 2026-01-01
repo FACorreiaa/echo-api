@@ -14,6 +14,7 @@ import (
 
 	"buf.build/gen/go/echo-tracker/echo/connectrpc/go/echo/v1/echov1connect"
 	echov1 "buf.build/gen/go/echo-tracker/echo/protocolbuffers/go/echo/v1"
+	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/categorization"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/repository"
 	importservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/service"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/interceptors"
@@ -24,13 +25,15 @@ type FinanceHandler struct {
 	echov1connect.UnimplementedFinanceServiceHandler
 	importSvc  *importservice.ImportService
 	importRepo repository.ImportRepository
+	catService *categorization.Service
 }
 
 // NewFinanceHandler constructs a new handler.
-func NewFinanceHandler(importSvc *importservice.ImportService, repo repository.ImportRepository) *FinanceHandler {
+func NewFinanceHandler(importSvc *importservice.ImportService, repo repository.ImportRepository, catSvc *categorization.Service) *FinanceHandler {
 	return &FinanceHandler{
 		importSvc:  importSvc,
 		importRepo: repo,
+		catService: catSvc,
 	}
 }
 
@@ -360,5 +363,108 @@ func (h *FinanceHandler) DeleteImportBatch(
 
 	return connect.NewResponse(&echov1.DeleteImportBatchResponse{
 		DeletedCount: int32(deletedCount),
+	}), nil
+}
+
+// CreateCategoryRule creates a new categorization rule for "Remember this" learning.
+func (h *FinanceHandler) CreateCategoryRule(
+	ctx context.Context,
+	req *connect.Request[echov1.CreateCategoryRuleRequest],
+) (*connect.Response[echov1.CreateCategoryRuleResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("invalid user ID in context"))
+	}
+
+	var categoryID *uuid.UUID
+	if req.Msg.CategoryId != nil && *req.Msg.CategoryId != "" {
+		parsed, err := uuid.Parse(*req.Msg.CategoryId)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid category_id"))
+		}
+		categoryID = &parsed
+	}
+
+	rule, updated, err := h.catService.CreateRule(
+		ctx, userID,
+		req.Msg.MatchPattern,
+		req.Msg.CleanName,
+		categoryID,
+		req.Msg.IsRecurring,
+		req.Msg.ApplyToExisting,
+	)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create rule: %w", err))
+	}
+
+	var catIDStr *string
+	if rule.AssignedCategoryID != nil {
+		s := rule.AssignedCategoryID.String()
+		catIDStr = &s
+	}
+
+	return connect.NewResponse(&echov1.CreateCategoryRuleResponse{
+		Rule: &echov1.CategoryRule{
+			Id:           rule.ID.String(),
+			UserId:       rule.UserID.String(),
+			MatchPattern: rule.MatchPattern,
+			CleanName:    *rule.CleanName,
+			CategoryId:   catIDStr,
+			IsRecurring:  rule.IsRecurring,
+			Priority:     int32(rule.Priority),
+		},
+		TransactionsUpdated: updated,
+	}), nil
+}
+
+// ListCategoryRules lists all categorization rules for the user.
+func (h *FinanceHandler) ListCategoryRules(
+	ctx context.Context,
+	req *connect.Request[echov1.ListCategoryRulesRequest],
+) (*connect.Response[echov1.ListCategoryRulesResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("invalid user ID in context"))
+	}
+
+	rules, err := h.catService.GetUserRules(ctx, userID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to list rules: %w", err))
+	}
+
+	protoRules := make([]*echov1.CategoryRule, 0, len(rules))
+	for _, r := range rules {
+		var catIDStr *string
+		if r.AssignedCategoryID != nil {
+			s := r.AssignedCategoryID.String()
+			catIDStr = &s
+		}
+		var cleanName string
+		if r.CleanName != nil {
+			cleanName = *r.CleanName
+		}
+		protoRules = append(protoRules, &echov1.CategoryRule{
+			Id:           r.ID.String(),
+			UserId:       r.UserID.String(),
+			MatchPattern: r.MatchPattern,
+			CleanName:    cleanName,
+			CategoryId:   catIDStr,
+			IsRecurring:  r.IsRecurring,
+			Priority:     int32(r.Priority),
+		})
+	}
+
+	return connect.NewResponse(&echov1.ListCategoryRulesResponse{
+		Rules: protoRules,
 	}), nil
 }

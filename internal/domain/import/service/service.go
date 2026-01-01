@@ -70,10 +70,23 @@ type ImportOptions struct {
 	InstitutionName string // Name of the bank/institution for this import
 }
 
+// CategorizationService defines the interface for transaction categorization
+type CategorizationService interface {
+	CategorizeBatch(ctx context.Context, userID uuid.UUID, descriptions []string) ([]*CategorizationResult, error)
+}
+
+// CategorizationResult holds the result of categorizing a transaction
+type CategorizationResult struct {
+	CleanMerchantName string
+	CategoryID        *uuid.UUID
+	IsRecurring       bool
+}
+
 // ImportService orchestrates file analysis and import operations
 type ImportService struct {
-	repo   repository.ImportRepository
-	logger *slog.Logger
+	repo       repository.ImportRepository
+	catService CategorizationService // Optional: nil if categorization not available
+	logger     *slog.Logger
 }
 
 const (
@@ -98,6 +111,12 @@ func NewImportService(repo repository.ImportRepository, logger *slog.Logger) *Im
 		repo:   repo,
 		logger: logger,
 	}
+}
+
+// WithCategorizationService adds categorization support to the import service
+func (s *ImportService) WithCategorizationService(catService CategorizationService) *ImportService {
+	s.catService = catService
+	return s
 }
 
 // AnalyzeFile analyzes an uploaded CSV/TSV file and determines if it can be auto-imported
@@ -270,6 +289,10 @@ func (s *ImportService) ImportWithOptions(ctx context.Context, userID uuid.UUID,
 	flushBatch := func() error {
 		if len(batch) == 0 {
 			return nil
+		}
+		// Enrich transactions with categorization if service is available
+		if s.catService != nil {
+			s.enrichBatch(ctx, userID, batch)
 		}
 		imported, err := s.repo.BulkInsertTransactions(ctx, userID, accountID, currencyCode, job.ID, opts.InstitutionName, batch)
 		if err != nil {
@@ -447,8 +470,11 @@ func (s *ImportService) parseRow(record []string, mapping ColumnMapping, _ int) 
 		return nil, fmt.Errorf("column index out of bounds")
 	}
 
-	// Parse date
-	dateStr := record[mapping.DateCol]
+	// Parse date - skip rows with empty dates
+	dateStr := strings.TrimSpace(record[mapping.DateCol])
+	if dateStr == "" {
+		return nil, fmt.Errorf("empty date field - skipping row")
+	}
 	date, err := normalizer.ParseFlexibleDate(dateStr, mapping.DateFormat, mapping.Location)
 	if err != nil {
 		return nil, fmt.Errorf("invalid date '%s': %w", dateStr, err)
@@ -893,4 +919,32 @@ func hasDecimalSuffix(value string, sep rune) bool {
 		}
 	}
 	return digits > 0
+}
+
+// enrichBatch calls the categorization service to populate MerchantName and CategoryID
+func (s *ImportService) enrichBatch(ctx context.Context, userID uuid.UUID, batch []*repository.ParsedTransaction) {
+	if s.catService == nil || len(batch) == 0 {
+		return
+	}
+
+	// Collect descriptions
+	descriptions := make([]string, len(batch))
+	for i, tx := range batch {
+		descriptions[i] = tx.Description
+	}
+
+	// Call categorization service
+	results, err := s.catService.CategorizeBatch(ctx, userID, descriptions)
+	if err != nil {
+		s.logger.Warn("categorization failed, using raw descriptions", "error", err)
+		return
+	}
+
+	// Apply results
+	for i, result := range results {
+		if i < len(batch) && result != nil {
+			batch[i].MerchantName = result.CleanMerchantName
+			batch[i].CategoryID = result.CategoryID
+		}
+	}
 }
