@@ -2,6 +2,7 @@ package insights
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,6 +48,50 @@ type InsightsRepository interface {
 	GetUnreadAlerts(ctx context.Context, userID uuid.UUID, limit int) ([]Alert, error)
 	MarkAlertRead(ctx context.Context, alertID uuid.UUID) error
 	MarkAlertDismissed(ctx context.Context, alertID uuid.UUID) error
+
+	// Import quality insights
+	GetImportInsights(ctx context.Context, importJobID uuid.UUID) (*ImportJobInsights, error)
+	UpsertImportInsights(ctx context.Context, insights *ImportJobInsights) error
+
+	// Data source health
+	GetDataSourceHealth(ctx context.Context, userID uuid.UUID) ([]DataSourceHealth, error)
+	RefreshDataSourceHealth(ctx context.Context) error
+}
+
+// ImportJobInsights contains computed quality metrics for an import job
+type ImportJobInsights struct {
+	ImportJobID        uuid.UUID
+	InstitutionName    string
+	CategorizationRate float64
+	DateQualityScore   float64
+	AmountQualityScore float64
+	EarliestDate       *time.Time
+	LatestDate         *time.Time
+	TotalIncome        int64
+	TotalExpenses      int64
+	CurrencyCode       string
+	DuplicatesSkipped  int
+	Issues             []ImportIssue
+}
+
+// ImportIssue represents a data quality issue found during import
+type ImportIssue struct {
+	Type         string `json:"type"`
+	AffectedRows int    `json:"affected_rows"`
+	SampleValue  string `json:"sample_value"`
+	Suggestion   string `json:"suggestion"`
+}
+
+// DataSourceHealth contains health metrics for a data source
+type DataSourceHealth struct {
+	InstitutionName    string
+	SourceType         string
+	TransactionCount   int
+	FirstTransaction   *time.Time
+	LastTransaction    *time.Time
+	LastImport         *time.Time
+	CategorizationRate float64
+	UncategorizedCount int
 }
 
 // Ensure Repository implements InsightsRepository
@@ -360,5 +405,152 @@ func (r *Repository) MarkAlertDismissed(ctx context.Context, alertID uuid.UUID) 
 	_, err := r.db.Exec(ctx, `
 		UPDATE alerts SET is_dismissed = true, dismissed_at = NOW() WHERE id = $1
 	`, alertID)
+	return err
+}
+
+// GetImportInsights retrieves quality insights for an import job
+func (r *Repository) GetImportInsights(ctx context.Context, importJobID uuid.UUID) (*ImportJobInsights, error) {
+	query := `
+		SELECT 
+			import_job_id,
+			COALESCE(institution_name, ''),
+			COALESCE(categorization_rate, 0),
+			COALESCE(date_quality_score, 1),
+			COALESCE(amount_quality_score, 1),
+			earliest_date,
+			latest_date,
+			COALESCE(total_income_minor, 0),
+			COALESCE(total_expenses_minor, 0),
+			COALESCE(currency_code, 'EUR'),
+			COALESCE(duplicates_skipped, 0),
+			COALESCE(issues_json, '[]'::jsonb)
+		FROM import_job_insights
+		WHERE import_job_id = $1
+	`
+
+	var insights ImportJobInsights
+	var issuesJSON []byte
+
+	err := r.db.QueryRow(ctx, query, importJobID).Scan(
+		&insights.ImportJobID,
+		&insights.InstitutionName,
+		&insights.CategorizationRate,
+		&insights.DateQualityScore,
+		&insights.AmountQualityScore,
+		&insights.EarliestDate,
+		&insights.LatestDate,
+		&insights.TotalIncome,
+		&insights.TotalExpenses,
+		&insights.CurrencyCode,
+		&insights.DuplicatesSkipped,
+		&issuesJSON,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse issues JSON
+	if len(issuesJSON) > 0 {
+		if err := json.Unmarshal(issuesJSON, &insights.Issues); err != nil {
+			return nil, err
+		}
+	}
+
+	return &insights, nil
+}
+
+// UpsertImportInsights creates or updates import insights
+func (r *Repository) UpsertImportInsights(ctx context.Context, insights *ImportJobInsights) error {
+	issuesJSON, err := json.Marshal(insights.Issues)
+	if err != nil {
+		return err
+	}
+
+	query := `
+		INSERT INTO import_job_insights (
+			import_job_id, institution_name, categorization_rate, date_quality_score,
+			amount_quality_score, earliest_date, latest_date, total_income_minor,
+			total_expenses_minor, currency_code, duplicates_skipped, issues_json
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (import_job_id) DO UPDATE SET
+			institution_name = EXCLUDED.institution_name,
+			categorization_rate = EXCLUDED.categorization_rate,
+			date_quality_score = EXCLUDED.date_quality_score,
+			amount_quality_score = EXCLUDED.amount_quality_score,
+			earliest_date = EXCLUDED.earliest_date,
+			latest_date = EXCLUDED.latest_date,
+			total_income_minor = EXCLUDED.total_income_minor,
+			total_expenses_minor = EXCLUDED.total_expenses_minor,
+			currency_code = EXCLUDED.currency_code,
+			duplicates_skipped = EXCLUDED.duplicates_skipped,
+			issues_json = EXCLUDED.issues_json,
+			updated_at = NOW()
+	`
+
+	_, err = r.db.Exec(ctx, query,
+		insights.ImportJobID,
+		insights.InstitutionName,
+		insights.CategorizationRate,
+		insights.DateQualityScore,
+		insights.AmountQualityScore,
+		insights.EarliestDate,
+		insights.LatestDate,
+		insights.TotalIncome,
+		insights.TotalExpenses,
+		insights.CurrencyCode,
+		insights.DuplicatesSkipped,
+		issuesJSON,
+	)
+
+	return err
+}
+
+// GetDataSourceHealth returns health metrics for all data sources of a user
+func (r *Repository) GetDataSourceHealth(ctx context.Context, userID uuid.UUID) ([]DataSourceHealth, error) {
+	query := `
+		SELECT 
+			institution_name,
+			source_type::text,
+			COALESCE(transaction_count, 0),
+			first_transaction,
+			last_transaction,
+			last_import,
+			COALESCE(categorization_rate, 0),
+			COALESCE(uncategorized_count, 0)
+		FROM data_source_health
+		WHERE user_id = $1
+		ORDER BY transaction_count DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sources []DataSourceHealth
+	for rows.Next() {
+		var s DataSourceHealth
+		if err := rows.Scan(
+			&s.InstitutionName,
+			&s.SourceType,
+			&s.TransactionCount,
+			&s.FirstTransaction,
+			&s.LastTransaction,
+			&s.LastImport,
+			&s.CategorizationRate,
+			&s.UncategorizedCount,
+		); err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+
+	return sources, rows.Err()
+}
+
+// RefreshDataSourceHealth refreshes the materialized view
+func (r *Repository) RefreshDataSourceHealth(ctx context.Context) error {
+	_, err := r.db.Exec(ctx, `REFRESH MATERIALIZED VIEW CONCURRENTLY data_source_health`)
 	return err
 }

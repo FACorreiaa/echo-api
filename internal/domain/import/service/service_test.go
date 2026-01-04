@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/repository"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/sniffer"
@@ -387,6 +388,17 @@ func (f *fakeImportRepo) GetImportJobByID(ctx context.Context, id uuid.UUID) (*r
 	return nil, nil
 }
 
+func (f *fakeImportRepo) GetImportJobStats(ctx context.Context, importJobID uuid.UUID) (*repository.ImportJobStats, error) {
+	return &repository.ImportJobStats{
+		TotalCount:         0,
+		CategorizationRate: 0,
+		TotalIncome:        0,
+		TotalExpenses:      0,
+		DuplicatesSkipped:  0,
+		UncategorizedCount: 0,
+	}, nil
+}
+
 func (f *fakeImportRepo) UpdateImportJobProgress(ctx context.Context, id uuid.UUID, rowsImported, rowsFailed int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -418,6 +430,10 @@ func (f *fakeImportRepo) ListTransactions(ctx context.Context, userID uuid.UUID,
 
 func (f *fakeImportRepo) DeleteByImportJobID(ctx context.Context, userID uuid.UUID, importJobID uuid.UUID) (int, error) {
 	return 0, nil
+}
+
+func (f *fakeImportRepo) GetCategoryTotals(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) ([]repository.CategoryTotal, error) {
+	return nil, nil
 }
 
 func (f *fakeImportRepo) bulkSizes() []int {

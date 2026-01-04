@@ -377,3 +377,23 @@ func (s *Service) MarkAlertRead(ctx context.Context, alertID uuid.UUID) error {
 func (s *Service) MarkAlertDismissed(ctx context.Context, alertID uuid.UUID) error {
 	return s.repo.MarkAlertDismissed(ctx, alertID)
 }
+
+// GetImportInsights returns quality insights for an import job
+func (s *Service) GetImportInsights(ctx context.Context, importJobID uuid.UUID) (*ImportJobInsights, error) {
+	return s.repo.GetImportInsights(ctx, importJobID)
+}
+
+// UpsertImportInsights creates or updates import insights
+func (s *Service) UpsertImportInsights(ctx context.Context, insights *ImportJobInsights) error {
+	return s.repo.UpsertImportInsights(ctx, insights)
+}
+
+// GetDataSourceHealth returns health metrics for all data sources of a user
+func (s *Service) GetDataSourceHealth(ctx context.Context, userID uuid.UUID) ([]DataSourceHealth, error) {
+	return s.repo.GetDataSourceHealth(ctx, userID)
+}
+
+// RefreshDataSourceHealth refreshes the materialized view for data source health
+func (s *Service) RefreshDataSourceHealth(ctx context.Context) error {
+	return s.repo.RefreshDataSourceHealth(ctx)
+}

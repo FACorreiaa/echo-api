@@ -252,6 +252,46 @@ func (r *PostgresImportRepository) GetImportJobByID(ctx context.Context, id uuid
 	return &job, nil
 }
 
+// GetImportJobStats retrieves aggregated statistics for an import job
+func (r *PostgresImportRepository) GetImportJobStats(ctx context.Context, importJobID uuid.UUID) (*ImportJobStats, error) {
+	query := `
+		SELECT 
+			COUNT(*) as total_count,
+			COALESCE(COUNT(*) FILTER (WHERE category_id IS NOT NULL)::float / NULLIF(COUNT(*), 0), 0) as categorization_rate,
+			COALESCE(SUM(amount_minor) FILTER (WHERE amount_minor > 0), 0) as total_income,
+			COALESCE(ABS(SUM(amount_minor) FILTER (WHERE amount_minor < 0)), 0) as total_expenses,
+			MIN(posted_at) as earliest_date,
+			MAX(posted_at) as latest_date,
+			COUNT(*) FILTER (WHERE category_id IS NULL) as uncategorized_count
+		FROM transactions
+		WHERE import_job_id = $1
+	`
+
+	var stats ImportJobStats
+	err := r.pool.QueryRow(ctx, query, importJobID).Scan(
+		&stats.TotalCount,
+		&stats.CategorizationRate,
+		&stats.TotalIncome,
+		&stats.TotalExpenses,
+		&stats.EarliestDate,
+		&stats.LatestDate,
+		&stats.UncategorizedCount,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get import job stats: %w", err)
+	}
+
+	// Get duplicates skipped from the import job itself
+	var rowsFailed int
+	err = r.pool.QueryRow(ctx, `SELECT COALESCE(rows_total, 0) - COALESCE(rows_imported, 0) FROM import_jobs WHERE id = $1`, importJobID).Scan(&rowsFailed)
+	if err != nil {
+		rowsFailed = 0 // Ignore error, not critical
+	}
+	stats.DuplicatesSkipped = rowsFailed
+
+	return &stats, nil
+}
+
 // UpdateImportJobProgress updates the row counts for an import job
 func (r *PostgresImportRepository) UpdateImportJobProgress(ctx context.Context, id uuid.UUID, rowsImported, rowsFailed int) error {
 	query := `UPDATE import_jobs SET rows_imported = $2, rows_failed = $3 WHERE id = $1`
@@ -488,4 +528,45 @@ func (r *PostgresImportRepository) DeleteByImportJobID(ctx context.Context, user
 		return 0, fmt.Errorf("failed to delete transactions by import job: %w", err)
 	}
 	return int(result.RowsAffected()), nil
+}
+
+// GetCategoryTotals aggregates spending by category for a date range
+// Used for computing plan actuals from transaction data
+func (r *PostgresImportRepository) GetCategoryTotals(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) ([]CategoryTotal, error) {
+	query := `
+		SELECT 
+			t.category_id,
+			COALESCE(c.name, t.category, 'Uncategorized') AS category_name,
+			ABS(SUM(t.amount_minor)) AS total_minor,
+			COUNT(*) AS tx_count
+		FROM transactions t
+		LEFT JOIN categories c ON t.category_id = c.id
+		WHERE t.user_id = $1
+		  AND t.posted_at >= $2
+		  AND t.posted_at < $3
+		  AND t.amount_minor < 0  -- Only expenses (negative amounts)
+		GROUP BY t.category_id, COALESCE(c.name, t.category, 'Uncategorized')
+		ORDER BY total_minor DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, userID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get category totals: %w", err)
+	}
+	defer rows.Close()
+
+	var results []CategoryTotal
+	for rows.Next() {
+		var ct CategoryTotal
+		if err := rows.Scan(&ct.CategoryID, &ct.CategoryName, &ct.TotalMinor, &ct.Count); err != nil {
+			return nil, fmt.Errorf("failed to scan category total: %w", err)
+		}
+		results = append(results, ct)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating category totals: %w", err)
+	}
+
+	return results, nil
 }

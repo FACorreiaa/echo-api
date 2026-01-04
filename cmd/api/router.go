@@ -154,6 +154,12 @@ func registerConnectRoutes(mux *http.ServeMux, deps *Dependencies, opts connect.
 		deps.Logger.Info("registered Connect RPC service", "path", balancePath)
 	}
 
+	if deps.PlanHandler != nil {
+		planPath, planHandler := echov1connect.NewPlanServiceHandler(deps.PlanHandler, opts)
+		mux.Handle(planPath, planHandler)
+		deps.Logger.Info("registered Connect RPC service", "path", planPath)
+	}
+
 	deps.Logger.Info("Connect RPC routes configured")
 }
 

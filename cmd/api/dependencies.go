@@ -20,10 +20,14 @@ import (
 	importservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/service"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/insights"
 	insightshandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/insights/handler"
+	planhandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/handler"
+	planrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/repository"
+	planservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/service"
 
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/config"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/db"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/push"
+	"github.com/FACorreiaa/smart-finance-tracker/pkg/storage"
 )
 
 // Dependencies holds all application dependencies
@@ -39,6 +43,7 @@ type Dependencies struct {
 	CategorizationRepo *categorization.Repository
 	InsightsRepo       *insights.Repository
 	BalanceRepo        *balance.Repository
+	PlanRepo           planrepo.PlanRepository
 
 	// Services
 	TokenManager          service.TokenManager
@@ -49,6 +54,8 @@ type Dependencies struct {
 	InsightsService       *insights.Service
 	PushService           *push.Service
 	BalanceService        *balance.Service
+	PlanService           *planservice.PlanService
+	FileStorage           storage.Storage
 
 	// Handlers
 	AuthHandler     *handler.AuthHandler
@@ -57,6 +64,7 @@ type Dependencies struct {
 	ImportHandler   *importhandler.ImportHandler
 	InsightsHandler *insightshandler.InsightsHandler
 	BalanceHandler  *balancehandler.BalanceHandler
+	PlanHandler     *planhandler.PlanHandler
 }
 
 // InitDependencies initializes all application dependencies
@@ -122,6 +130,7 @@ func (d *Dependencies) initRepositories() error {
 	d.CategorizationRepo = categorization.NewRepository(d.DB.Pool)
 	d.InsightsRepo = insights.NewRepository(d.DB.Pool)
 	d.BalanceRepo = balance.NewRepository(d.DB.Pool)
+	d.PlanRepo = planrepo.NewPostgresPlanRepository(d.DB.Pool)
 
 	d.Logger.Info("repositories initialized")
 	return nil
@@ -162,8 +171,26 @@ func (d *Dependencies) initServices() error {
 	// Insights service for spending pulse and dashboard (with push notifications)
 	d.InsightsService = insights.NewService(d.InsightsRepo, d.PushService, d.AuthRepo, d.Logger)
 
+	// Wire insights adapter to import service for post-import quality metrics
+	insightsAdapter := insights.NewServiceAdapter(d.InsightsService)
+	d.ImportService.WithInsightsService(insightsAdapter)
+
 	// Balance service for computing user balances
 	d.BalanceService = balance.NewService(d.BalanceRepo)
+
+	// Plan service for user financial plans (BYOS)
+	d.PlanService = planservice.NewPlanService(d.PlanRepo, d.ImportRepo, d.Logger)
+
+	// File storage for uploads (defaults to local storage)
+	storageCfg := &storage.Config{
+		Type:      storage.StorageTypeLocal,
+		LocalPath: "./uploads",
+	}
+	fileStorage, err := storage.New(storageCfg)
+	if err != nil {
+		return fmt.Errorf("failed to init file storage: %w", err)
+	}
+	d.FileStorage = fileStorage
 
 	d.Logger.Info("services initialized")
 	return nil
@@ -173,9 +200,10 @@ func (d *Dependencies) initServices() error {
 func (d *Dependencies) initHandlers() error {
 	d.AuthHandler = handler.NewAuthHandler(d.AuthService)
 	d.FinanceHandler = financehandler.NewFinanceHandler(d.ImportService, d.ImportRepo, d.CategorizationService)
-	d.ImportHandler = importhandler.NewImportHandler(d.ImportService, d.Logger)
+	d.ImportHandler = importhandler.NewImportHandler(d.ImportService, d.FileStorage, d.Logger)
 	d.InsightsHandler = insightshandler.NewInsightsHandler(d.InsightsService)
 	d.BalanceHandler = balancehandler.NewBalanceHandler(d.BalanceService)
+	d.PlanHandler = planhandler.NewPlanHandler(d.PlanService, d.FileStorage)
 
 	d.Logger.Info("handlers initialized")
 	return nil

@@ -56,7 +56,7 @@ func (r *Repository) GetAccountBalances(ctx context.Context, userID uuid.UUID) (
 				t.account_id,
 				a.name AS account_name,
 				a.type AS account_type,
-				COALESCE(SUM(t.amount_cents), 0) AS total_balance,
+				COALESCE(SUM(t.amount_minor), 0) AS total_balance,
 				MAX(t.posted_at) AS last_activity
 			FROM transactions t
 			LEFT JOIN accounts a ON a.id = t.account_id
@@ -66,7 +66,7 @@ func (r *Repository) GetAccountBalances(ctx context.Context, userID uuid.UUID) (
 		daily_change AS (
 			SELECT 
 				account_id,
-				COALESCE(SUM(amount_cents), 0) AS change_24h
+				COALESCE(SUM(amount_minor), 0) AS change_24h
 			FROM transactions
 			WHERE user_id = $1 
 			  AND posted_at >= NOW() - INTERVAL '24 hours'
@@ -75,7 +75,7 @@ func (r *Repository) GetAccountBalances(ctx context.Context, userID uuid.UUID) (
 		SELECT 
 			ab.account_id,
 			COALESCE(ab.account_name, 'Unknown Account'),
-			COALESCE(ab.account_type, 0),
+			ab.account_type,
 			ab.total_balance,
 			COALESCE(dc.change_24h, 0),
 			ab.last_activity
@@ -93,20 +93,56 @@ func (r *Repository) GetAccountBalances(ctx context.Context, userID uuid.UUID) (
 	var balances []AccountBalanceData
 	for rows.Next() {
 		var b AccountBalanceData
-		var accountIDStr string
+		var accountIDStr *string    // Nullable - transactions may not have account
+		var accountName *string     // Nullable
+		var accountType *string     // Nullable string for enum
+		var lastActivity *time.Time // Nullable
 		err := rows.Scan(
 			&accountIDStr,
-			&b.AccountName,
-			&b.AccountType,
+			&accountName,
+			&accountType,
 			&b.CashBalanceCents,
 			&b.Change24hCents,
-			&b.LastActivity,
+			&lastActivity,
 		)
 		if err != nil {
 			return nil, err
 		}
-		b.AccountID, _ = uuid.Parse(accountIDStr)
+
+		// Handle nullable fields
+		if accountIDStr != nil {
+			b.AccountID, _ = uuid.Parse(*accountIDStr)
+		}
+		if accountName != nil {
+			b.AccountName = *accountName
+		} else {
+			b.AccountName = "Unknown Account"
+		}
+		if lastActivity != nil {
+			b.LastActivity = *lastActivity
+		}
 		b.CurrencyCode = "EUR" // Default, could be fetched from account
+
+		// Map account type enum to int32
+		// 0 = unknown, 5 = investment
+		if accountType != nil {
+			switch *accountType {
+			case "investment":
+				b.AccountType = 5
+			case "checking":
+				b.AccountType = 1
+			case "savings":
+				b.AccountType = 2
+			case "credit_card":
+				b.AccountType = 3
+			case "cash":
+				b.AccountType = 4
+			case "loan":
+				b.AccountType = 6
+			default:
+				b.AccountType = 0
+			}
+		}
 
 		// Separate cash vs investment based on account type
 		// AccountType: 5 = INVESTMENT
@@ -124,7 +160,7 @@ func (r *Repository) GetAccountBalances(ctx context.Context, userID uuid.UUID) (
 // GetTotalBalance computes the total balance across all accounts
 func (r *Repository) GetTotalBalance(ctx context.Context, userID uuid.UUID) (int64, error) {
 	query := `
-		SELECT COALESCE(SUM(amount_cents), 0)
+		SELECT COALESCE(SUM(amount_minor), 0)
 		FROM transactions
 		WHERE user_id = $1
 	`
@@ -137,7 +173,7 @@ func (r *Repository) GetTotalBalance(ctx context.Context, userID uuid.UUID) (int
 func (r *Repository) GetUpcomingBills(ctx context.Context, userID uuid.UUID) (int64, error) {
 	// Sum recurring subscriptions expected in next 30 days
 	query := `
-		SELECT COALESCE(SUM(ABS(amount_cents)), 0)
+		SELECT COALESCE(SUM(ABS(amount_minor)), 0)
 		FROM recurring_subscriptions
 		WHERE user_id = $1 
 		  AND is_active = true
@@ -156,17 +192,17 @@ func (r *Repository) GetUpcomingBills(ctx context.Context, userID uuid.UUID) (in
 func (r *Repository) GetBalanceHistory(ctx context.Context, userID uuid.UUID, days int) ([]DailyBalanceData, error) {
 	query := `
 		WITH RECURSIVE dates AS (
-			SELECT CURRENT_DATE - $2 + 1 AS date
+			SELECT CURRENT_DATE - ($2::integer) + 1 AS date
 			UNION ALL
 			SELECT date + 1 FROM dates WHERE date < CURRENT_DATE
 		),
 		daily_totals AS (
 			SELECT 
 				DATE(posted_at) AS date,
-				SUM(amount_cents) AS daily_sum
+				SUM(amount_minor) AS daily_sum
 			FROM transactions
 			WHERE user_id = $1
-			  AND posted_at >= CURRENT_DATE - $2
+			  AND posted_at >= CURRENT_DATE - ($2::integer)
 			GROUP BY DATE(posted_at)
 		),
 		running_balance AS (
@@ -208,10 +244,10 @@ func (r *Repository) GetBalanceStats(ctx context.Context, userID uuid.UUID, days
 		WITH daily_balances AS (
 			SELECT 
 				DATE(posted_at) AS date,
-				SUM(SUM(amount_cents)) OVER (ORDER BY DATE(posted_at)) AS running_balance
+				SUM(SUM(amount_minor)) OVER (ORDER BY DATE(posted_at)) AS running_balance
 			FROM transactions
 			WHERE user_id = $1
-			  AND posted_at >= CURRENT_DATE - $2
+			  AND posted_at >= CURRENT_DATE - ($2::integer)
 			GROUP BY DATE(posted_at)
 		)
 		SELECT 

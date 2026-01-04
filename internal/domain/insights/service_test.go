@@ -114,6 +114,23 @@ func (m *MockInsightsRepo) MarkAlertDismissed(ctx context.Context, alertID uuid.
 	return nil
 }
 
+// Import insights mocks
+func (m *MockInsightsRepo) GetImportInsights(ctx context.Context, importJobID uuid.UUID) (*insights.ImportJobInsights, error) {
+	return nil, nil
+}
+
+func (m *MockInsightsRepo) UpsertImportInsights(ctx context.Context, i *insights.ImportJobInsights) error {
+	return nil
+}
+
+func (m *MockInsightsRepo) GetDataSourceHealth(ctx context.Context, userID uuid.UUID) ([]insights.DataSourceHealth, error) {
+	return nil, nil
+}
+
+func (m *MockInsightsRepo) RefreshDataSourceHealth(ctx context.Context) error {
+	return nil
+}
+
 // SetAlertToday sets whether an alert exists today (for deduplication tests)
 func (m *MockInsightsRepo) SetAlertToday(exists bool) {
 	m.alertToday = exists

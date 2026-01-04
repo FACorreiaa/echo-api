@@ -89,6 +89,7 @@ type ImportRepository interface {
 	// Import Jobs
 	CreateImportJob(ctx context.Context, job *ImportJob) error
 	GetImportJobByID(ctx context.Context, id uuid.UUID) (*ImportJob, error)
+	GetImportJobStats(ctx context.Context, importJobID uuid.UUID) (*ImportJobStats, error)
 	UpdateImportJobProgress(ctx context.Context, id uuid.UUID, rowsImported, rowsFailed int) error
 	UpdateImportJobStatus(ctx context.Context, id uuid.UUID, status string, errorMessage *string) error
 	FinishImportJob(ctx context.Context, id uuid.UUID, status string, rowsImported, rowsFailed int, errorMessage *string) error
@@ -99,8 +100,23 @@ type ImportRepository interface {
 	// Transactions (list/query)
 	ListTransactions(ctx context.Context, userID uuid.UUID, filter ListTransactionsFilter) ([]*Transaction, int64, error)
 
+	// Transactions (aggregation for plan actuals)
+	GetCategoryTotals(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) ([]CategoryTotal, error)
+
 	// Transactions (delete by import job)
 	DeleteByImportJobID(ctx context.Context, userID uuid.UUID, importJobID uuid.UUID) (int, error)
+}
+
+// ImportJobStats contains aggregated statistics for an import job
+type ImportJobStats struct {
+	TotalCount         int
+	CategorizationRate float64
+	TotalIncome        int64
+	TotalExpenses      int64
+	EarliestDate       *time.Time
+	LatestDate         *time.Time
+	DuplicatesSkipped  int
+	UncategorizedCount int
 }
 
 // Transaction represents a stored transaction with full metadata
@@ -134,4 +150,12 @@ type ListTransactionsFilter struct {
 	Search      string // Search in description
 	Limit       int
 	Offset      int
+}
+
+// CategoryTotal contains aggregated spending for a single category
+type CategoryTotal struct {
+	CategoryID   *uuid.UUID
+	CategoryName string
+	TotalMinor   int64 // Absolute value of spending (always positive for expenses)
+	Count        int   // Number of transactions
 }

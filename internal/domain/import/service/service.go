@@ -82,11 +82,42 @@ type CategorizationResult struct {
 	IsRecurring       bool
 }
 
+// InsightsService defines the interface for computing import insights
+type InsightsService interface {
+	UpsertImportInsights(ctx context.Context, insights *ImportInsights) error
+	RefreshDataSourceHealth(ctx context.Context) error
+}
+
+// ImportInsights contains computed quality metrics for an import job
+type ImportInsights struct {
+	ImportJobID        uuid.UUID
+	InstitutionName    string
+	CategorizationRate float64
+	DateQualityScore   float64
+	AmountQualityScore float64
+	EarliestDate       *time.Time
+	LatestDate         *time.Time
+	TotalIncome        int64
+	TotalExpenses      int64
+	CurrencyCode       string
+	DuplicatesSkipped  int
+	Issues             []ImportIssue
+}
+
+// ImportIssue represents a data quality issue found during import
+type ImportIssue struct {
+	Type         string `json:"type"`
+	AffectedRows int    `json:"affected_rows"`
+	SampleValue  string `json:"sample_value"`
+	Suggestion   string `json:"suggestion"`
+}
+
 // ImportService orchestrates file analysis and import operations
 type ImportService struct {
-	repo       repository.ImportRepository
-	catService CategorizationService // Optional: nil if categorization not available
-	logger     *slog.Logger
+	repo        repository.ImportRepository
+	catService  CategorizationService // Optional: nil if categorization not available
+	insightsSvc InsightsService       // Optional: nil if insights not available
+	logger      *slog.Logger
 }
 
 const (
@@ -116,6 +147,12 @@ func NewImportService(repo repository.ImportRepository, logger *slog.Logger) *Im
 // WithCategorizationService adds categorization support to the import service
 func (s *ImportService) WithCategorizationService(catService CategorizationService) *ImportService {
 	s.catService = catService
+	return s
+}
+
+// WithInsightsService adds import insights support to the import service
+func (s *ImportService) WithInsightsService(insightsSvc InsightsService) *ImportService {
+	s.insightsSvc = insightsSvc
 	return s
 }
 
@@ -361,6 +398,30 @@ func (s *ImportService) ImportWithOptions(ctx context.Context, userID uuid.UUID,
 		s.logger.Warn("failed to finish import job", "error", err)
 	}
 
+	// Compute and store import insights (async, non-blocking)
+	if s.insightsSvc != nil && rowsImported > 0 {
+		go func() {
+			insightsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			insights, err := s.computeImportInsights(insightsCtx, job.ID, opts.InstitutionName, currencyCode)
+			if err != nil {
+				s.logger.Warn("failed to compute import insights", "jobID", job.ID, "error", err)
+				return
+			}
+
+			if err := s.insightsSvc.UpsertImportInsights(insightsCtx, insights); err != nil {
+				s.logger.Warn("failed to store import insights", "jobID", job.ID, "error", err)
+				return
+			}
+
+			// Refresh the data source health view
+			if err := s.insightsSvc.RefreshDataSourceHealth(insightsCtx); err != nil {
+				s.logger.Warn("failed to refresh data source health", "error", err)
+			}
+		}()
+	}
+
 	return &ImportResult{
 		JobID:        job.ID,
 		RowsTotal:    rowsImported + rowsFailed,
@@ -368,6 +429,50 @@ func (s *ImportService) ImportWithOptions(ctx context.Context, userID uuid.UUID,
 		RowsFailed:   rowsFailed,
 		Errors:       errors,
 	}, nil
+}
+
+// computeImportInsights queries the imported transactions and computes quality metrics
+func (s *ImportService) computeImportInsights(
+	ctx context.Context,
+	importJobID uuid.UUID,
+	institutionName string,
+	currencyCode string,
+) (*ImportInsights, error) {
+	// Query the repository for import stats
+	stats, err := s.repo.GetImportJobStats(ctx, importJobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get import stats: %w", err)
+	}
+
+	insights := &ImportInsights{
+		ImportJobID:        importJobID,
+		InstitutionName:    institutionName,
+		CurrencyCode:       currencyCode,
+		CategorizationRate: stats.CategorizationRate,
+		TotalIncome:        stats.TotalIncome,
+		TotalExpenses:      stats.TotalExpenses,
+		DateQualityScore:   1.0,
+		AmountQualityScore: 1.0,
+		DuplicatesSkipped:  stats.DuplicatesSkipped,
+	}
+
+	if stats.EarliestDate != nil {
+		insights.EarliestDate = stats.EarliestDate
+	}
+	if stats.LatestDate != nil {
+		insights.LatestDate = stats.LatestDate
+	}
+
+	// Check for uncategorized transactions as an issue
+	if stats.UncategorizedCount > 0 {
+		insights.Issues = append(insights.Issues, ImportIssue{
+			Type:         "uncategorized",
+			AffectedRows: stats.UncategorizedCount,
+			Suggestion:   "Review uncategorized transactions to improve spending insights",
+		})
+	}
+
+	return insights, nil
 }
 
 // ImportWithExistingMapping uses a pre-existing bank mapping to import
@@ -947,4 +1052,66 @@ func (s *ImportService) enrichBatch(ctx context.Context, userID uuid.UUID, batch
 			batch[i].CategoryID = result.CategoryID
 		}
 	}
+}
+
+// ============================================================================
+// User File Management
+// ============================================================================
+
+// CreateUserFileInput contains the input for creating a user file record
+type CreateUserFileInput struct {
+	UserID     uuid.UUID
+	FileID     uuid.UUID
+	Type       string
+	MimeType   string
+	FileName   string
+	SizeBytes  int64
+	Checksum   string
+	StorageURL string
+}
+
+// UserFile represents a stored user file
+type UserFile struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Type       string
+	MimeType   string
+	FileName   string
+	SizeBytes  int64
+	Checksum   string
+	StorageURL string
+	CreatedAt  time.Time
+}
+
+// CreateUserFile creates a user file record in the database
+func (s *ImportService) CreateUserFile(ctx context.Context, input CreateUserFileInput) (*UserFile, error) {
+	storageURL := input.StorageURL
+	checksum := input.Checksum
+
+	uf := &repository.UserFile{
+		ID:             input.FileID,
+		UserID:         input.UserID,
+		Type:           input.Type,
+		MimeType:       input.MimeType,
+		FileName:       input.FileName,
+		SizeBytes:      input.SizeBytes,
+		ChecksumSHA256: &checksum,
+		StorageURL:     &storageURL,
+	}
+
+	if err := s.repo.CreateUserFile(ctx, uf); err != nil {
+		return nil, fmt.Errorf("create user file: %w", err)
+	}
+
+	return &UserFile{
+		ID:         uf.ID,
+		UserID:     uf.UserID,
+		Type:       uf.Type,
+		MimeType:   uf.MimeType,
+		FileName:   uf.FileName,
+		SizeBytes:  uf.SizeBytes,
+		Checksum:   checksum,
+		StorageURL: storageURL,
+		CreatedAt:  uf.CreatedAt,
+	}, nil
 }

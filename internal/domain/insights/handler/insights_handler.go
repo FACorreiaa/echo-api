@@ -275,3 +275,150 @@ func toProtoSeverity(s insights.AlertSeverity) echov1.AlertSeverity {
 		return echov1.AlertSeverity_ALERT_SEVERITY_UNSPECIFIED
 	}
 }
+
+// GetImportInsights returns quality metrics for an import job.
+func (h *InsightsHandler) GetImportInsights(
+	ctx context.Context,
+	req *connect.Request[echov1.GetImportInsightsRequest],
+) (*connect.Response[echov1.GetImportInsightsResponse], error) {
+	_, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	importJobID, err := uuid.Parse(req.Msg.ImportJobId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid import job ID"))
+	}
+
+	insights, err := h.svc.GetImportInsights(ctx, importJobID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("import insights not found"))
+	}
+
+	// Convert domain issues to proto
+	protoIssues := make([]*echov1.ImportIssue, 0, len(insights.Issues))
+	for _, issue := range insights.Issues {
+		protoIssues = append(protoIssues, &echov1.ImportIssue{
+			Type:         toProtoImportIssueType(issue.Type),
+			AffectedRows: int32(issue.AffectedRows),
+			SampleValue:  issue.SampleValue,
+			Suggestion:   issue.Suggestion,
+		})
+	}
+
+	resp := &echov1.GetImportInsightsResponse{
+		Insights: &echov1.ImportInsights{
+			ImportJobId:        insights.ImportJobID.String(),
+			InstitutionName:    insights.InstitutionName,
+			TotalRows:          int32(insights.DuplicatesSkipped), // TODO: compute from import job
+			RowsImported:       int32(0),                          // TODO: compute from import job
+			RowsFailed:         int32(0),                          // TODO: compute from import job
+			DuplicatesSkipped:  int32(insights.DuplicatesSkipped),
+			CategorizationRate: insights.CategorizationRate,
+			DateQualityScore:   insights.DateQualityScore,
+			AmountQualityScore: insights.AmountQualityScore,
+			TotalIncome:        toMoney(insights.TotalIncome),
+			TotalExpenses:      toMoney(insights.TotalExpenses),
+			Issues:             protoIssues,
+		},
+	}
+
+	if insights.EarliestDate != nil {
+		resp.Insights.EarliestDate = timestamppb.New(*insights.EarliestDate)
+	}
+	if insights.LatestDate != nil {
+		resp.Insights.LatestDate = timestamppb.New(*insights.LatestDate)
+	}
+
+	return connect.NewResponse(resp), nil
+}
+
+// GetDataSourceHealth returns health metrics for all connected data sources.
+func (h *InsightsHandler) GetDataSourceHealth(
+	ctx context.Context,
+	req *connect.Request[echov1.GetDataSourceHealthRequest],
+) (*connect.Response[echov1.GetDataSourceHealthResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("invalid user ID in context"))
+	}
+
+	sources, err := h.svc.GetDataSourceHealth(ctx, userID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	protoSources := make([]*echov1.DataSourceHealth, 0, len(sources))
+	totalCount := 0
+	var oldest *timestamppb.Timestamp
+
+	for _, s := range sources {
+		protoSource := &echov1.DataSourceHealth{
+			InstitutionName:    s.InstitutionName,
+			SourceType:         toProtoTransactionSource(s.SourceType),
+			TransactionCount:   int32(s.TransactionCount),
+			CategorizationRate: s.CategorizationRate,
+			UncategorizedCount: int32(s.UncategorizedCount),
+		}
+
+		if s.FirstTransaction != nil {
+			protoSource.FirstTransaction = timestamppb.New(*s.FirstTransaction)
+			if oldest == nil || s.FirstTransaction.Before(oldest.AsTime()) {
+				oldest = protoSource.FirstTransaction
+			}
+		}
+		if s.LastTransaction != nil {
+			protoSource.LastTransaction = timestamppb.New(*s.LastTransaction)
+		}
+		if s.LastImport != nil {
+			protoSource.LastImport = timestamppb.New(*s.LastImport)
+		}
+
+		totalCount += s.TransactionCount
+		protoSources = append(protoSources, protoSource)
+	}
+
+	return connect.NewResponse(&echov1.GetDataSourceHealthResponse{
+		Sources:               protoSources,
+		TotalTransactionCount: int32(totalCount),
+		OldestTransaction:     oldest,
+	}), nil
+}
+
+func toProtoImportIssueType(t string) echov1.ImportIssueType {
+	switch t {
+	case "unparseable_date":
+		return echov1.ImportIssueType_IMPORT_ISSUE_TYPE_UNPARSEABLE_DATE
+	case "invalid_amount":
+		return echov1.ImportIssueType_IMPORT_ISSUE_TYPE_INVALID_AMOUNT
+	case "missing_description":
+		return echov1.ImportIssueType_IMPORT_ISSUE_TYPE_MISSING_DESCRIPTION
+	case "duplicate_rows":
+		return echov1.ImportIssueType_IMPORT_ISSUE_TYPE_DUPLICATE_ROWS
+	case "uncategorized":
+		return echov1.ImportIssueType_IMPORT_ISSUE_TYPE_UNCATEGORIZED
+	case "future_date":
+		return echov1.ImportIssueType_IMPORT_ISSUE_TYPE_FUTURE_DATE
+	default:
+		return echov1.ImportIssueType_IMPORT_ISSUE_TYPE_UNSPECIFIED
+	}
+}
+
+func toProtoTransactionSource(s string) echov1.TransactionSource {
+	switch s {
+	case "manual":
+		return echov1.TransactionSource_TRANSACTION_SOURCE_MANUAL
+	case "csv":
+		return echov1.TransactionSource_TRANSACTION_SOURCE_CSV
+	case "aggregator":
+		return echov1.TransactionSource_TRANSACTION_SOURCE_AGGREGATOR
+	default:
+		return echov1.TransactionSource_TRANSACTION_SOURCE_UNSPECIFIED
+	}
+}
