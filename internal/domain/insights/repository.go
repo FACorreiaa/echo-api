@@ -56,6 +56,9 @@ type InsightsRepository interface {
 	// Data source health
 	GetDataSourceHealth(ctx context.Context, userID uuid.UUID) ([]DataSourceHealth, error)
 	RefreshDataSourceHealth(ctx context.Context) error
+
+	// Database access for complex queries
+	DB() *pgxpool.Pool
 }
 
 // ImportJobInsights contains computed quality metrics for an import job
@@ -105,6 +108,11 @@ type Repository struct {
 // NewRepository creates a new insights repository
 func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
+}
+
+// DB returns the database pool for direct queries
+func (r *Repository) DB() *pgxpool.Pool {
+	return r.db
 }
 
 // GetSpendingPulseData fetches spending data for current vs last month comparison

@@ -97,6 +97,9 @@ type ImportRepository interface {
 	// Transactions (bulk insert for imported data)
 	BulkInsertTransactions(ctx context.Context, userID uuid.UUID, accountID *uuid.UUID, currencyCode string, importJobID uuid.UUID, institutionName string, txs []*ParsedTransaction) (int, error)
 
+	// Transactions (single insert for manual entry)
+	InsertTransaction(ctx context.Context, tx *Transaction) error
+
 	// Transactions (list/query)
 	ListTransactions(ctx context.Context, userID uuid.UUID, filter ListTransactionsFilter) ([]*Transaction, int64, error)
 

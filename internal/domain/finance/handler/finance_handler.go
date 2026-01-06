@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -467,4 +469,177 @@ func (h *FinanceHandler) ListCategoryRules(
 	return connect.NewResponse(&echov1.ListCategoryRulesResponse{
 		Rules: protoRules,
 	}), nil
+}
+
+// CreateManualTransaction handles Quick Capture natural language transaction input.
+// Parses input like "Coffee 1$" and creates a transaction with auto-categorization.
+func (h *FinanceHandler) CreateManualTransaction(
+	ctx context.Context,
+	req *connect.Request[echov1.CreateManualTransactionRequest],
+) (*connect.Response[echov1.CreateManualTransactionResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("invalid user ID in context"))
+	}
+
+	// Parse natural language input
+	parsed := parseNaturalLanguage(req.Msg.RawText)
+
+	// Allow overrides from request
+	description := parsed.Description
+	if req.Msg.Description != nil && *req.Msg.Description != "" {
+		description = *req.Msg.Description
+	}
+
+	amountMinor := parsed.AmountMinor
+	if req.Msg.AmountMinor != nil {
+		amountMinor = *req.Msg.AmountMinor
+	}
+
+	txDate := parsed.Date
+	if req.Msg.Date != nil {
+		txDate = req.Msg.Date.AsTime()
+	}
+
+	var accountID *uuid.UUID
+	if req.Msg.AccountId != nil && *req.Msg.AccountId != "" {
+		id, err := uuid.Parse(*req.Msg.AccountId)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid account_id"))
+		}
+		accountID = &id
+	}
+
+	// Auto-categorize using the categorization service
+	var categoryID *uuid.UUID
+	var suggestedCategoryID *string
+	if req.Msg.CategoryId != nil && *req.Msg.CategoryId != "" {
+		// User provided category override
+		id, err := uuid.Parse(*req.Msg.CategoryId)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid category_id"))
+		}
+		categoryID = &id
+	} else if h.catService != nil {
+		// Try auto-categorization
+		catResult, _ := h.catService.Categorize(ctx, userID, description)
+		if catResult != nil && catResult.CategoryID != nil {
+			categoryID = catResult.CategoryID
+			s := catResult.CategoryID.String()
+			suggestedCategoryID = &s
+		}
+	}
+
+	// Create the transaction via import repository
+	tx := &repository.Transaction{
+		ID:                  uuid.New(),
+		UserID:              userID,
+		AccountID:           accountID,
+		CategoryID:          categoryID,
+		Description:         description,
+		OriginalDescription: &req.Msg.RawText,
+		AmountCents:         amountMinor,
+		CurrencyCode:        parsed.Currency,
+		Date:                txDate,
+		Source:              "manual",
+	}
+
+	err = h.importRepo.InsertTransaction(ctx, tx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create transaction: %w", err))
+	}
+
+	// TODO: Calculate budget impact feedback
+	// For now, return empty - can be enhanced later
+	var budgetImpact *string
+
+	return connect.NewResponse(&echov1.CreateManualTransactionResponse{
+		Transaction:         transactionToProto(tx),
+		ParsedDescription:   parsed.Description,
+		ParsedAmountMinor:   parsed.AmountMinor,
+		SuggestedCategoryId: suggestedCategoryID,
+		BudgetImpact:        budgetImpact,
+	}), nil
+}
+
+// parseNaturalLanguage extracts transaction details from natural language input.
+func parseNaturalLanguage(rawText string) parsedTransaction {
+	result := parsedTransaction{
+		Date:     timestamppb.Now().AsTime(),
+		Currency: "EUR",
+	}
+
+	rawText = strings.TrimSpace(rawText)
+	if rawText == "" {
+		return result
+	}
+
+	// Simple regex-based parsing for amounts
+	// Matches: $1, 1$, €5, 5€, $10.50, 10,50€, etc.
+	amountPattern := regexp.MustCompile(`(?:(\$|€|EUR|USD)\s*)?(\d+(?:[.,]\d{1,2})?)\s*(\$|€|EUR|USD)?`)
+	matches := amountPattern.FindAllStringSubmatchIndex(rawText, -1)
+
+	if len(matches) == 0 {
+		// No amount found, entire text is description
+		result.Description = rawText
+		return result
+	}
+
+	// Use the last match (most likely the amount)
+	match := matches[len(matches)-1]
+	fullMatchStart := match[0]
+	fullMatchEnd := match[1]
+
+	// Extract amount string
+	amountStart := match[4]
+	amountEnd := match[5]
+	amountStr := rawText[amountStart:amountEnd]
+
+	// Detect currency from prefix or suffix
+	if match[2] != -1 && match[3] != -1 {
+		prefix := rawText[match[2]:match[3]]
+		result.Currency = normalizeCurrency(prefix)
+	} else if match[6] != -1 && match[7] != -1 {
+		suffix := rawText[match[6]:match[7]]
+		result.Currency = normalizeCurrency(suffix)
+	}
+
+	// Parse amount - handle European format (comma as decimal)
+	amountStr = strings.Replace(amountStr, ",", ".", 1)
+	if amount, err := strconv.ParseFloat(amountStr, 64); err == nil {
+		result.AmountMinor = int64(amount * 100)
+	}
+
+	// Extract description (text without the amount part)
+	description := rawText[:fullMatchStart] + rawText[fullMatchEnd:]
+	description = strings.Join(strings.Fields(description), " ")
+	if len(description) > 0 {
+		description = strings.ToUpper(description[:1]) + description[1:]
+	}
+	result.Description = description
+
+	return result
+}
+
+type parsedTransaction struct {
+	Description string
+	AmountMinor int64
+	Currency    string
+	Date        time.Time
+}
+
+func normalizeCurrency(symbol string) string {
+	switch strings.ToUpper(symbol) {
+	case "$", "USD":
+		return "USD"
+	case "€", "EUR":
+		return "EUR"
+	default:
+		return "EUR"
+	}
 }

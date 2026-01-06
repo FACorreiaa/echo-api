@@ -176,7 +176,7 @@ func (r *Repository) GetUpcomingBills(ctx context.Context, userID uuid.UUID) (in
 		SELECT COALESCE(SUM(ABS(amount_minor)), 0)
 		FROM recurring_subscriptions
 		WHERE user_id = $1 
-		  AND is_active = true
+		  AND status = 'active'
 		  AND next_expected_at <= NOW() + INTERVAL '30 days'
 	`
 	var total int64

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -129,6 +130,10 @@ func (m *MockInsightsRepo) GetDataSourceHealth(ctx context.Context, userID uuid.
 
 func (m *MockInsightsRepo) RefreshDataSourceHealth(ctx context.Context) error {
 	return nil
+}
+
+func (m *MockInsightsRepo) DB() *pgxpool.Pool {
+	return nil // Mock returns nil - wrapped queries won't work in tests
 }
 
 // SetAlertToday sets whether an alert exists today (for deduplication tests)

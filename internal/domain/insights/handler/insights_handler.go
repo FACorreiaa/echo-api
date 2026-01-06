@@ -422,3 +422,62 @@ func toProtoTransactionSource(s string) echov1.TransactionSource {
 		return echov1.TransactionSource_TRANSACTION_SOURCE_UNSPECIFIED
 	}
 }
+
+// GetWrapped returns the wrapped summary for a period.
+func (h *InsightsHandler) GetWrapped(
+	ctx context.Context,
+	req *connect.Request[echov1.GetWrappedRequest],
+) (*connect.Response[echov1.GetWrappedResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("invalid user ID in context"))
+	}
+
+	// Parse period
+	period := "month"
+	if req.Msg.Period == echov1.WrappedPeriod_WRAPPED_PERIOD_YEAR {
+		period = "year"
+	}
+
+	periodStart := req.Msg.PeriodStart.AsTime()
+	periodEnd := req.Msg.PeriodEnd.AsTime()
+
+	// Get wrapped summary from service
+	summary, err := h.svc.GetWrapped(ctx, userID, period, periodStart, periodEnd)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Build proto cards
+	protoCards := make([]*echov1.WrappedCard, 0, len(summary.Cards))
+	for _, card := range summary.Cards {
+		protoCards = append(protoCards, &echov1.WrappedCard{
+			Title:    card.Title,
+			Subtitle: card.Subtitle,
+			Body:     card.Body,
+			Accent:   card.Accent,
+		})
+	}
+
+	protoPeriod := echov1.WrappedPeriod_WRAPPED_PERIOD_MONTH
+	if period == "year" {
+		protoPeriod = echov1.WrappedPeriod_WRAPPED_PERIOD_YEAR
+	}
+
+	return connect.NewResponse(&echov1.GetWrappedResponse{
+		Wrapped: &echov1.WrappedSummary{
+			Id:          summary.ID.String(),
+			UserId:      summary.UserID.String(),
+			Period:      protoPeriod,
+			PeriodStart: timestamppb.New(summary.PeriodStart),
+			PeriodEnd:   timestamppb.New(summary.PeriodEnd),
+			Cards:       protoCards,
+			CreatedAt:   timestamppb.New(summary.CreatedAt),
+		},
+	}), nil
+}

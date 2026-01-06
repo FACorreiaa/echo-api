@@ -404,6 +404,49 @@ func (r *PostgresImportRepository) BulkInsertTransactions(ctx context.Context, u
 	return totalInserted, nil
 }
 
+// InsertTransaction inserts a single transaction (for manual entry via Quick Capture)
+func (r *PostgresImportRepository) InsertTransaction(ctx context.Context, tx *Transaction) error {
+	now := time.Now()
+	if tx.CreatedAt.IsZero() {
+		tx.CreatedAt = now
+	}
+	if tx.UpdatedAt.IsZero() {
+		tx.UpdatedAt = now
+	}
+
+	query := `
+		INSERT INTO transactions (
+			id, user_id, account_id, category_id, amount_minor, currency_code,
+			posted_at, description, original_description, merchant_name,
+			source, external_id, notes, institution_name, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+	`
+
+	_, err := r.pool.Exec(ctx, query,
+		tx.ID,
+		tx.UserID,
+		tx.AccountID,
+		tx.CategoryID,
+		tx.AmountCents,
+		tx.CurrencyCode,
+		tx.Date,
+		tx.Description,
+		tx.OriginalDescription,
+		tx.MerchantName,
+		tx.Source,
+		tx.ExternalID,
+		tx.Notes,
+		tx.InstitutionName,
+		tx.CreatedAt,
+		tx.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert transaction: %w", err)
+	}
+
+	return nil
+}
+
 // generateExternalID creates a unique identifier for deduplication
 func generateExternalID(tx *ParsedTransaction) string {
 	data := fmt.Sprintf("%s|%s|%d", tx.Date.Format(time.RFC3339), tx.Description, tx.AmountCents)

@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -329,15 +330,21 @@ func (h *PlanHandler) ImportPlanFromExcel(ctx context.Context, req *connect.Requ
 	}
 
 	// Import
-	result, err := h.svc.ImportFromExcel(ctx, userID, reader, req.Msg.SheetName, config, planName)
+	importResult, err := h.svc.ImportFromExcel(ctx, userID, reader, req.Msg.SheetName, config, planName)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
+	// Get plan with full category structure for response
+	planWithDetails, err := h.svc.GetPlanWithDetails(ctx, userID, importResult.Plan.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get plan details: %w", err))
+	}
+
 	return connect.NewResponse(&echov1.ImportPlanFromExcelResponse{
-		Plan:               toProtoPlan(result.Plan),
-		CategoriesImported: int32(result.CategoriesImported),
-		ItemsImported:      int32(result.ItemsImported),
+		Plan:               toProtoPlanWithDetails(planWithDetails),
+		CategoriesImported: int32(importResult.CategoriesImported),
+		ItemsImported:      int32(importResult.ItemsImported),
 	}), nil
 }
 
