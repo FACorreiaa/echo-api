@@ -424,6 +424,10 @@ func (f *fakeImportRepo) BulkInsertTransactions(ctx context.Context, userID uuid
 	return len(txs), nil
 }
 
+func (f *fakeImportRepo) InsertTransaction(ctx context.Context, tx *repository.Transaction) error {
+	return nil
+}
+
 func (f *fakeImportRepo) ListTransactions(ctx context.Context, userID uuid.UUID, filter repository.ListTransactionsFilter) ([]*repository.Transaction, int64, error) {
 	return nil, 0, nil
 }
