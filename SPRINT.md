@@ -106,7 +106,7 @@ Implement the core financial metrics system that serves as the "System Health" i
 
 ### Concepts
 - **Net Worth (The State):** Total value of assets minus liabilities - a calculated snapshot
-- **Total Spend (The Flow):** Real-time counter of outflows within a calendar month
+- **Total Spend (The Flow):** Real-time counter of outflows within a calendar month/year
 
 ### Acceptance Criteria
 - [ ] Calculate Net Worth from all user assets and liabilities
