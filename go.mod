@@ -27,7 +27,14 @@ require (
 
 require (
 	buf.build/gen/go/echo-tracker/echo/connectrpc/go v1.19.1-20260106114126-b466e7a12bd3.2
+	github.com/Rhymond/go-money v1.0.15
+	github.com/blevesearch/bleve/v2 v2.5.7
+	github.com/brianvoe/gofakeit/v6 v6.28.0
+	github.com/cloudflare/ahocorasick v0.0.0-20240916140611-054963ec9396
+	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
+	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/shopspring/decimal v1.4.0
 	github.com/xuri/excelize/v2 v2.10.0
 )
 
@@ -40,7 +47,6 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
-	github.com/blevesearch/bleve/v2 v2.5.7 // indirect
 	github.com/blevesearch/bleve_index_api v1.2.11 // indirect
 	github.com/blevesearch/geo v0.2.4 // indirect
 	github.com/blevesearch/go-faiss v1.0.26 // indirect
@@ -59,7 +65,6 @@ require (
 	github.com/blevesearch/zapx/v15 v15.4.2 // indirect
 	github.com/blevesearch/zapx/v16 v16.2.8 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cloudflare/ahocorasick v0.0.0-20240916140611-054963ec9396 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.3 // indirect
@@ -80,7 +85,6 @@ require (
 	github.com/lestrrat-go/iter v1.0.2 // indirect
 	github.com/lestrrat-go/jwx v1.2.31 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
-	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

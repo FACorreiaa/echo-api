@@ -119,3 +119,50 @@ To keep the "Alive" pulse fast during uploads, you need to parse CSVs and Excels
 
 * **[Excelize](https://github.com/qax-os/excelize):** You are already considering this, and it’s the correct choice. It is the most robust library for **reading and writing XLXS files**, including complex formula evaluation.
 * **[Gocsv](https://github.com/gocarina/gocsv):** A fast, tag-based CSV parser. It allows you to unmarshal CSV rows directly into **Go structs**, which will make your "Mapping Wizard" logic much cleaner and faster.
+
+
+the packages I created are
+  standalone implementations that haven't been
+  integrated into the actual application code
+  yet. They exist as reusable modules but aren't
+   being called from anywhere.
+
+  Here's the current state:
+
+  | Package                                 |
+  Status    | Integration Needed
+                                  |
+  |-----------------------------------------|---
+  --------|-------------------------------------
+  ------------------------------|
+  | categorization/engine.go (Aho-Corasick) | ✅
+   Created | Service has CategorizeFast()
+  methods but handlers don't call them |
+  | categorization/fuzzy.go                 | ✅
+   Created | Service has methods but handlers
+  don't call them                  |
+  | categorization/search.go (Bleve)        | ✅
+   Created | Service has methods but handlers
+  don't call them                  |
+  | import/parser/                          | ✅
+   Created | Not imported by existing import
+  service                           |
+
+  Would you like me to integrate these into the
+  actual application code? This would involve:
+
+  1. Categorization Integration:
+    - Update handlers to use CategorizeFast()
+  instead of Categorize()
+    - Add API endpoints for fuzzy search and
+  merchant suggestions
+    - Initialize the search index on service
+  startup
+  2. Parser Integration:
+    - Replace the existing
+  parseTransactionsStream() in the import
+  service with the new parser
+    - Wire up the streaming parser for large
+  file uploads
+
+ Integrate and update testing, and create new ones if not created before, and benchmark the old and new business logic and see if the tests pass to proceed. 
