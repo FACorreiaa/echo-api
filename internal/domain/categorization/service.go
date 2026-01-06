@@ -21,6 +21,14 @@ type Service struct {
 	// Key: userID, Value: pre-built engine for that user
 	engineCache map[uuid.UUID]*Engine
 	engineMu    sync.RWMutex
+
+	// Fuzzy matcher per user for handling merchant variations
+	fuzzyCache map[uuid.UUID]*FuzzyMatcher
+	fuzzyMu    sync.RWMutex
+
+	// Search index for full-text search (shared across users)
+	searchIndex *SearchIndex
+	searchMu    sync.RWMutex
 }
 
 // NewService creates a new categorization service
@@ -30,7 +38,22 @@ func NewService(repo *Repository) *Service {
 		ruleCache:     make(map[uuid.UUID][]CategoryRule),
 		merchantCache: nil,
 		engineCache:   make(map[uuid.UUID]*Engine),
+		fuzzyCache:    make(map[uuid.UUID]*FuzzyMatcher),
 	}
+}
+
+// NewServiceWithSearch creates a categorization service with full-text search enabled
+func NewServiceWithSearch(repo *Repository, indexPath string) (*Service, error) {
+	s := NewService(repo)
+
+	// Initialize search index
+	index, err := NewSearchIndex(indexPath)
+	if err != nil {
+		return nil, err
+	}
+	s.searchIndex = index
+
+	return s, nil
 }
 
 // Categorize takes a raw transaction description and returns enriched data
@@ -244,6 +267,39 @@ func (s *Service) invalidateEngineCache(userID uuid.UUID) {
 	s.engineMu.Lock()
 	delete(s.engineCache, userID)
 	s.engineMu.Unlock()
+
+	// Also invalidate fuzzy cache
+	s.fuzzyMu.Lock()
+	delete(s.fuzzyCache, userID)
+	s.fuzzyMu.Unlock()
+}
+
+// getOrBuildFuzzyMatcher returns a cached FuzzyMatcher for the user, building it if necessary.
+func (s *Service) getOrBuildFuzzyMatcher(ctx context.Context, userID uuid.UUID) (*FuzzyMatcher, error) {
+	s.fuzzyMu.RLock()
+	if matcher, ok := s.fuzzyCache[userID]; ok {
+		s.fuzzyMu.RUnlock()
+		return matcher, nil
+	}
+	s.fuzzyMu.RUnlock()
+
+	rules, err := s.GetUserRules(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	merchants, err := s.getMerchants(ctx, &userID)
+	if err != nil {
+		return nil, err
+	}
+
+	matcher := NewFuzzyMatcher(rules, merchants)
+
+	s.fuzzyMu.Lock()
+	s.fuzzyCache[userID] = matcher
+	s.fuzzyMu.Unlock()
+
+	return matcher, nil
 }
 
 // CategorizeFast uses the high-performance Aho-Corasick engine for categorization.
@@ -364,4 +420,172 @@ func toTitleCase(s string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+// ============================================================================
+// Fuzzy Matching Methods
+// ============================================================================
+
+// CategorizeFuzzy uses fuzzy matching to categorize a transaction.
+// This is useful when exact pattern matching fails but you want to catch
+// merchant variations like "STARBUCKS 001" vs "STARBUCKS 002".
+// The threshold parameter controls match sensitivity (0-100, higher = stricter).
+// Recommended threshold: 70 for loose matching, 85 for strict matching.
+func (s *Service) CategorizeFuzzy(ctx context.Context, userID uuid.UUID, description string, threshold int) (*CategorizationResult, error) {
+	result := &CategorizationResult{
+		CleanMerchantName: cleanDescription(description),
+	}
+
+	matcher, err := s.getOrBuildFuzzyMatcher(ctx, userID)
+	if err != nil {
+		return result, nil // Fail open
+	}
+
+	match := matcher.Match(description, threshold)
+	if match == nil {
+		return result, nil
+	}
+
+	if match.CleanName != "" {
+		result.CleanMerchantName = match.CleanName
+	}
+	result.CategoryID = match.CategoryID
+	result.RuleID = match.RuleID
+	result.MerchantID = match.MerchantID
+
+	return result, nil
+}
+
+// CategorizeWithFallback tries exact matching first, then falls back to fuzzy matching.
+// This provides the best balance of speed (Aho-Corasick) and flexibility (fuzzy).
+func (s *Service) CategorizeWithFallback(ctx context.Context, userID uuid.UUID, description string, fuzzyThreshold int) (*CategorizationResult, error) {
+	// Try fast exact matching first
+	result, err := s.CategorizeFast(ctx, userID, description)
+	if err != nil {
+		return result, err
+	}
+
+	// If we got a match, return it
+	if result.RuleID != nil || result.MerchantID != nil {
+		return result, nil
+	}
+
+	// Fall back to fuzzy matching
+	return s.CategorizeFuzzy(ctx, userID, description, fuzzyThreshold)
+}
+
+// SuggestMerchantMatches returns the top fuzzy matches for a description.
+// Useful for UI suggestions when the user is categorizing a new transaction.
+func (s *Service) SuggestMerchantMatches(ctx context.Context, userID uuid.UUID, description string, limit int) ([]FuzzyMatchResult, error) {
+	matcher, err := s.getOrBuildFuzzyMatcher(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return matcher.RankMatches(description, limit), nil
+}
+
+// GroupSimilarMerchants groups similar transaction descriptions together.
+// This is useful for batch cleanup of merchant names in user's transaction history.
+// Returns a map where the key is the canonical merchant name and value is all similar descriptions.
+func (s *Service) GroupSimilarMerchants(ctx context.Context, userID uuid.UUID, descriptions []string, threshold int) (map[string][]string, error) {
+	matcher, err := s.getOrBuildFuzzyMatcher(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return matcher.FindSimilarMerchants(descriptions, threshold), nil
+}
+
+// ============================================================================
+// Full-Text Search Methods (requires SearchIndex to be initialized)
+// ============================================================================
+
+// SearchMerchants performs full-text search across merchants and rules.
+// Returns results ranked by relevance.
+func (s *Service) SearchMerchants(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+	s.searchMu.RLock()
+	defer s.searchMu.RUnlock()
+
+	if s.searchIndex == nil {
+		return nil, nil // Search not enabled
+	}
+
+	return s.searchIndex.Search(query, limit)
+}
+
+// SearchMerchantsWithPrefix performs autocomplete-style prefix search.
+func (s *Service) SearchMerchantsWithPrefix(ctx context.Context, prefix string, limit int) ([]SearchResult, error) {
+	s.searchMu.RLock()
+	defer s.searchMu.RUnlock()
+
+	if s.searchIndex == nil {
+		return nil, nil
+	}
+
+	return s.searchIndex.SearchWithPrefix(prefix, limit)
+}
+
+// SearchMerchantsFuzzy performs fuzzy full-text search with typo tolerance.
+func (s *Service) SearchMerchantsFuzzy(ctx context.Context, query string, fuzziness, limit int) ([]SearchResult, error) {
+	s.searchMu.RLock()
+	defer s.searchMu.RUnlock()
+
+	if s.searchIndex == nil {
+		return nil, nil
+	}
+
+	return s.searchIndex.SearchFuzzy(query, fuzziness, limit)
+}
+
+// SearchMerchantsAdvanced performs complex boolean queries.
+// Example: "+coffee -airport" (must have coffee, must not have airport)
+func (s *Service) SearchMerchantsAdvanced(ctx context.Context, queryString string, limit int) ([]SearchResult, error) {
+	s.searchMu.RLock()
+	defer s.searchMu.RUnlock()
+
+	if s.searchIndex == nil {
+		return nil, nil
+	}
+
+	return s.searchIndex.SearchAdvanced(queryString, limit)
+}
+
+// RebuildSearchIndex rebuilds the full-text search index from current rules and merchants.
+// Call this periodically or when data changes significantly.
+func (s *Service) RebuildSearchIndex(ctx context.Context, userID uuid.UUID) error {
+	s.searchMu.Lock()
+	defer s.searchMu.Unlock()
+
+	if s.searchIndex == nil {
+		return nil
+	}
+
+	rules, err := s.GetUserRules(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	merchants, err := s.getMerchants(ctx, &userID)
+	if err != nil {
+		return err
+	}
+
+	// Clear and rebuild
+	if err := s.searchIndex.Clear(); err != nil {
+		return err
+	}
+
+	return s.searchIndex.IndexRulesAndMerchants(rules, merchants)
+}
+
+// CloseSearchIndex closes the search index. Call this on service shutdown.
+func (s *Service) CloseSearchIndex() error {
+	s.searchMu.Lock()
+	defer s.searchMu.Unlock()
+
+	if s.searchIndex != nil {
+		return s.searchIndex.Close()
+	}
+	return nil
 }
