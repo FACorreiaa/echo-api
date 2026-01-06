@@ -79,7 +79,7 @@ func (r *PostgresPlanRepository) GetPlanByID(ctx context.Context, planID uuid.UU
 func (r *PostgresPlanRepository) ListPlansByUser(ctx context.Context, userID uuid.UUID, status *PlanStatus, limit, offset int) ([]*UserPlan, int, error) {
 	// Count query
 	countArgs := []any{userID}
-	countQuery := `SELECT COUNT(*) FROM user_plans WHERE user_id = $1`
+	countQuery := `SELECT COUNT(*) FROM user_plans WHERE user_id = $1 AND status != 'archived'`
 	if status != nil {
 		countQuery += ` AND status = $2`
 		countArgs = append(countArgs, *status)
@@ -98,7 +98,7 @@ func (r *PostgresPlanRepository) ListPlansByUser(ctx context.Context, userID uui
 		       total_income_minor, total_expenses_minor, currency_code,
 		       created_at, updated_at
 		FROM user_plans
-		WHERE user_id = $1
+		WHERE user_id = $1 AND status != 'archived'
 	`
 	argIdx := 2
 	if status != nil {
