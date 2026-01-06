@@ -56,13 +56,19 @@ func (s *Service) GetBalance(ctx context.Context, userID uuid.UUID, accountID *u
 		accounts = filtered
 	}
 
-	// Calculate totals
+	// Calculate totals from transactions
 	var totalCash, totalInvestment int64
 	for _, a := range accounts {
 		totalCash += a.CashBalanceCents
 		totalInvestment += a.InvestmentCents
 	}
 	totalNetWorth := totalCash + totalInvestment
+
+	// Add opening balance if set (this is the user's starting point)
+	openingBalance, err := s.repo.GetOpeningBalance(ctx, userID)
+	if err == nil && openingBalance != nil {
+		totalNetWorth += openingBalance.AmountMinor
+	}
 
 	// Get upcoming bills
 	upcomingBills, _ := s.repo.GetUpcomingBills(ctx, userID)
@@ -106,4 +112,34 @@ func (s *Service) GetBalanceHistory(ctx context.Context, userID uuid.UUID, days 
 		AverageCents: average,
 		CurrencyCode: "EUR",
 	}, nil
+}
+
+// OpeningBalanceResult holds the opening balance data
+type OpeningBalanceResult struct {
+	AmountMinor  int64
+	CurrencyCode string
+	IsSet        bool
+}
+
+// GetOpeningBalance returns the user's starting balance
+func (s *Service) GetOpeningBalance(ctx context.Context, userID uuid.UUID) (*OpeningBalanceResult, error) {
+	snapshot, err := s.repo.GetOpeningBalance(ctx, userID)
+	if err != nil {
+		// Not found is okay - return empty result
+		return &OpeningBalanceResult{IsSet: false, CurrencyCode: "EUR"}, nil
+	}
+	return &OpeningBalanceResult{
+		AmountMinor:  snapshot.AmountMinor,
+		CurrencyCode: snapshot.CurrencyCode,
+		IsSet:        true,
+	}, nil
+}
+
+// SetOpeningBalance sets or updates the user's starting balance
+func (s *Service) SetOpeningBalance(ctx context.Context, userID uuid.UUID, amountMinor int64, currencyCode string) error {
+	if currencyCode == "" {
+		currencyCode = "EUR"
+	}
+	_, err := s.repo.SetOpeningBalance(ctx, userID, amountMinor, currencyCode)
+	return err
 }

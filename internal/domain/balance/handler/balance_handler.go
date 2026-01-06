@@ -175,3 +175,71 @@ func (h *BalanceHandler) GetBalanceHistory(
 
 	return connect.NewResponse(resp), nil
 }
+
+// GetOpeningBalance returns the user's starting balance
+func (h *BalanceHandler) GetOpeningBalance(
+	ctx context.Context,
+	req *connect.Request[echov1.GetOpeningBalanceRequest],
+) (*connect.Response[echov1.GetOpeningBalanceResponse], error) {
+	// Get user ID from context
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	result, err := h.svc.GetOpeningBalance(ctx, userID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	resp := &echov1.GetOpeningBalanceResponse{
+		OpeningBalance: &echov1.Money{
+			AmountMinor:  result.AmountMinor,
+			CurrencyCode: result.CurrencyCode,
+		},
+		IsSet: result.IsSet,
+	}
+
+	return connect.NewResponse(resp), nil
+}
+
+// SetOpeningBalance sets or updates the user's starting balance
+func (h *BalanceHandler) SetOpeningBalance(
+	ctx context.Context,
+	req *connect.Request[echov1.SetOpeningBalanceRequest],
+) (*connect.Response[echov1.SetOpeningBalanceResponse], error) {
+	// Get user ID from context
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	currencyCode := req.Msg.CurrencyCode
+	if currencyCode == "" {
+		currencyCode = "EUR"
+	}
+
+	err = h.svc.SetOpeningBalance(ctx, userID, req.Msg.AmountMinor, currencyCode)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	resp := &echov1.SetOpeningBalanceResponse{
+		OpeningBalance: &echov1.Money{
+			AmountMinor:  req.Msg.AmountMinor,
+			CurrencyCode: currencyCode,
+		},
+	}
+
+	return connect.NewResponse(resp), nil
+}

@@ -15,6 +15,9 @@ import (
 	balancehandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/balance/handler"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/categorization"
 	financehandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/finance/handler"
+	goalshandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/goals/handler"
+	goalsrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/goals/repository"
+	goalsservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/goals/service"
 	importhandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/handler"
 	importrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/repository"
 	importservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/service"
@@ -23,6 +26,9 @@ import (
 	planhandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/handler"
 	planrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/repository"
 	planservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/service"
+	subscriptionshandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/handler"
+	subscriptionsrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/repository"
+	subscriptionsservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/service"
 
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/config"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/db"
@@ -37,13 +43,15 @@ type Dependencies struct {
 	Logger *slog.Logger
 
 	// Repositories
-	AuthRepo           repository.AuthRepository
-	UserRepo           user.UserRepo
-	ImportRepo         importrepo.ImportRepository
-	CategorizationRepo *categorization.Repository
-	InsightsRepo       *insights.Repository
-	BalanceRepo        *balance.Repository
-	PlanRepo           planrepo.PlanRepository
+	AuthRepo            repository.AuthRepository
+	UserRepo            user.UserRepo
+	ImportRepo          importrepo.ImportRepository
+	CategorizationRepo  *categorization.Repository
+	InsightsRepo        *insights.Repository
+	BalanceRepo         *balance.Repository
+	PlanRepo            planrepo.PlanRepository
+	GoalsRepo           goalsrepo.GoalRepository
+	SubscriptionsRepo   subscriptionsrepo.SubscriptionRepository
 
 	// Services
 	TokenManager          service.TokenManager
@@ -55,16 +63,20 @@ type Dependencies struct {
 	PushService           *push.Service
 	BalanceService        *balance.Service
 	PlanService           *planservice.PlanService
+	GoalsService          *goalsservice.Service
+	SubscriptionsService  *subscriptionsservice.Service
 	FileStorage           storage.Storage
 
 	// Handlers
-	AuthHandler     *handler.AuthHandler
-	UserHandler     *userhandler.UserHandler
-	FinanceHandler  *financehandler.FinanceHandler
-	ImportHandler   *importhandler.ImportHandler
-	InsightsHandler *insightshandler.InsightsHandler
-	BalanceHandler  *balancehandler.BalanceHandler
-	PlanHandler     *planhandler.PlanHandler
+	AuthHandler          *handler.AuthHandler
+	UserHandler          *userhandler.UserHandler
+	FinanceHandler       *financehandler.FinanceHandler
+	ImportHandler        *importhandler.ImportHandler
+	InsightsHandler      *insightshandler.InsightsHandler
+	BalanceHandler       *balancehandler.BalanceHandler
+	PlanHandler          *planhandler.PlanHandler
+	GoalsHandler         *goalshandler.GoalsHandler
+	SubscriptionsHandler *subscriptionshandler.SubscriptionsHandler
 }
 
 // InitDependencies initializes all application dependencies
@@ -131,6 +143,8 @@ func (d *Dependencies) initRepositories() error {
 	d.InsightsRepo = insights.NewRepository(d.DB.Pool)
 	d.BalanceRepo = balance.NewRepository(d.DB.Pool)
 	d.PlanRepo = planrepo.NewPostgresPlanRepository(d.DB.Pool)
+	d.GoalsRepo = goalsrepo.NewPostgresGoalRepository(d.DB.Pool)
+	d.SubscriptionsRepo = subscriptionsrepo.NewPostgresSubscriptionRepository(d.DB.Pool)
 
 	d.Logger.Info("repositories initialized")
 	return nil
@@ -181,6 +195,12 @@ func (d *Dependencies) initServices() error {
 	// Plan service for user financial plans (BYOS)
 	d.PlanService = planservice.NewPlanService(d.PlanRepo, d.ImportRepo, d.Logger)
 
+	// Goals service for savings goals with progress tracking
+	d.GoalsService = goalsservice.NewService(d.GoalsRepo)
+
+	// Subscriptions service for recurring charge detection
+	d.SubscriptionsService = subscriptionsservice.NewService(d.SubscriptionsRepo)
+
 	// File storage for uploads (defaults to local storage)
 	storageCfg := &storage.Config{
 		Type:      storage.StorageTypeLocal,
@@ -204,6 +224,8 @@ func (d *Dependencies) initHandlers() error {
 	d.InsightsHandler = insightshandler.NewInsightsHandler(d.InsightsService)
 	d.BalanceHandler = balancehandler.NewBalanceHandler(d.BalanceService)
 	d.PlanHandler = planhandler.NewPlanHandler(d.PlanService, d.FileStorage)
+	d.GoalsHandler = goalshandler.NewGoalsHandler(d.GoalsService)
+	d.SubscriptionsHandler = subscriptionshandler.NewSubscriptionsHandler(d.SubscriptionsService)
 
 	d.Logger.Info("handlers initialized")
 	return nil

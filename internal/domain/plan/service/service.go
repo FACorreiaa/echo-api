@@ -370,12 +370,22 @@ type ExcelAnalysisResult struct {
 
 // SheetInfo contains information about a single Excel sheet
 type SheetInfo struct {
-	Name               string   `json:"name"`
-	IsLivingPlan       bool     `json:"is_living_plan"`
-	RowCount           int      `json:"row_count"`
-	FormulaCount       int      `json:"formula_count"`
-	DetectedCategories []string `json:"detected_categories"`
-	MonthColumns       []string `json:"month_columns"`
+	Name               string             `json:"name"`
+	IsLivingPlan       bool               `json:"is_living_plan"`
+	RowCount           int                `json:"row_count"`
+	FormulaCount       int                `json:"formula_count"`
+	DetectedCategories []string           `json:"detected_categories"`
+	MonthColumns       []string           `json:"month_columns"`
+	DetectedMapping    *ColumnMappingInfo `json:"detected_mapping,omitempty"` // Auto-detected column layout
+}
+
+// ColumnMappingInfo contains auto-detected column positions for import
+type ColumnMappingInfo struct {
+	CategoryColumn   string  `json:"category_column"`
+	ValueColumn      string  `json:"value_column"`
+	HeaderRow        int     `json:"header_row"`
+	PercentageColumn string  `json:"percentage_column,omitempty"`
+	Confidence       float64 `json:"confidence"`
 }
 
 // ExcelImportConfig contains the configuration for importing a plan from Excel

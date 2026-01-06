@@ -42,20 +42,92 @@ Focus: make something people *want to come back to* and *share*.
 
 [x]- **Auth + sessions:** account creation, login, refresh, logout.
 [x]- **Data ingestion v1:** CSV upload/import (bank exports) to avoid early aggregator complexity.
-- **Document import v1:** import CSV/XLSX (and later invoices) into a canonical transaction model.
-- **Transaction normalization:** merchant cleanup + categorization with user overrides.
+[x]- **Document import v1:** import CSV/XLSX (and later invoices) into a canonical transaction model.
+- **Transaction normalization:** merchant cleanup + categorization with user overrides. User should be able to edit transactions as well as categories. 
 - **Spending overview:** top categories, merchants, trends, month-to-date vs last month.
 - **Foundation v1:** optional manual net worth entries + basic runway metric.
-- **Goals/buckets v1:** targets, timelines, progress pacing, “behind plan” nudges.
-- **Subscriptions v1:** detect recurring charges; one-tap “review/cancel checklist”.
-- **Monthly insights:** “3 things changed this month” + “1 action to take this week”.
+[] - **Goals/buckets v1:** targets, timelines, progress pacing, “behind plan” nudges.
+[] - **Subscriptions v1:** detect recurring charges; one-tap “review/cancel checklist”.
+[] - **Monthly insights:** “3 things changed this month” + “1 action to take this week”.
 - **Mini-wrapped:** shareable monthly summary cards (no sensitive details by default).
 - **BYOS v1:** upload a spreadsheet template + field mapping; export computed views as shareable/read-only.
 - **Payments (optional in MVP):** Stripe Checkout for premium plan (behind feature flags).
-- **XLSX Import:** Extend the import service to handle Excel files
+[x]- **XLSX Import:** Extend the import service to handle Excel files
 - **Category Assignment:** Auto-categorize transactions or let users assign categories, add more metadata to transactions
 - **Monthly Insights:** Aggregated spending by category/month
 - **Empty State Dashboard:** Prompt new users to import
+
+- Simulate a budget for the month. Set budget as 2000. The net worth is now 2000. 
+if transactions add money, that value will increase. But if the transactions are a cost, for example rent, that value will decrease. a coffee, value decreases. 
+Yes, allowing users to manually set an initial net worth or "starting balance" makes perfect sense for your app. Since **Echo** does not link directly to bank accounts, a user-defined starting point is the only way to provide context for their spending and progress.
+
+In the world of Personal Finance Management (PFM), this approach is known as a **manual or "closed" system**.
+
+### Why This Logic Works for an "Alive OS"
+
+Allowing the user to define their starting point serves as the foundation for all subsequent "Alive" insights:
+
+* **Establishing a Reference Point:** Net worth is a "snapshot in time". Without a starting number, a user seeing "-€20 for coffee" has no context. With a starting net worth of €2,000, that coffee becomes a measurable 1% decrease in their total tracked wealth.
+* **Zero-Risk Privacy:** Millions of users prefer manual apps specifically because they do not require bank linking, eliminating risks associated with sharing sensitive login credentials.
+* **Tracking Growth vs. Spending:** Net worth is calculated as **Assets minus Liabilities**. By letting the user set this, you enable them to track their progress over months or years, showing whether their total wealth is growing or shrinking regardless of individual budget categories.
+
+### How to Implement the "Master Balance" Flow
+
+To keep the app's logic consistent, you should treat the user's initial input as the "Opening Balance."
+
+1. **Initial Snapshot:** The user enters their total starting value (e.g., €2,000).
+2. **Transaction Impact:** * **Debits (Costs):** Rent, coffee, or subscriptions subtract from this master value.
+* **Credits (Income):** Salary or side hustles add to it.
+
+
+3. **Real-Time Pacing:** You can then compare this "Actual" balance against their monthly budget to show if they are "On Track" or "Overspending".
+
+- Onboarding
+New users should be immediatly prompted to set a starting balance or plan. or 
+To make the initial experience feel like a professional **"Operating System,"** you should offer a **Multi-Path Onboarding** rather than a single choice. However, the first prompt should be a **"Fast Path" to set a starting balance** because it provides the immediate foundation for your mathematical logic.
+
+### **The Recommended Onboarding Order**
+
+1. **Set Starting Balance (High Priority):** This is the "Heartbeat" of the OS. By setting a starting number (e.g., €2,000), every subsequent action—whether manual or imported—has context.
+2. **Import CSV/Excel (The Discovery):** Once the balance is set, prompt the user to "Populate History." This is where your **Mapping Wizard** and **Aho-Corasick engine** shine by turning raw files into a "Story."
+3. **Choose a Planning Template (The Goal):** Finally, ask the user if they want to apply a "Nischa-style" 50/30/20 routine or a custom manual plan.
+
+---
+
+### **Why the Starting Balance is the Best "Step 1"**
+
+| Onboarding Option | Pros | Cons |
+| --- | --- | --- |
+| **Starting Balance** | **Instant**. Takes 5 seconds. Establishes the "Master Balance" logic immediately. | Doesn't show the "power" of the automated engine yet. |
+| **CSV Import** | Highly impressive. Shows the **"Alive"** mapping and categorization engine instantly. | **High friction**. Users may not have their CSV file ready on their phone during the first open. |
+| **Manual Plan** | Great for "planners." Sets expectations for Pillar 5 (Goals). | Can feel like "homework" if the user has to enter 20 categories manually. |
+
+---
+
+### **The "Alive" Onboarding Screen Logic**
+
+Instead of a standard list, use your **Skia Background** and **Moti animations** to present three "Operating System" paths. This reduces cognitive load while making the app feel intelligent.
+
+* **Option A: "The Fresh Start"** (Manual Balance) — *Best for users who want to log as they go.*
+* **Option B: "The Data Ingest"** (CSV/Excel) — *Best for users who want their full history imported now.*
+* **Option C: "The Blueprint"** (Nischa Template) — *Best for users who want a pre-built strategy.*
+
+**Technical Strategy for Onboarding**
+
+When the user sets the **Starting Balance**, your Go backend should create an "Opening Balance" entry in the ledger with a `source_type = 'system'`. This ensures that even if they import a CSV later, your **Deduplication Engine** can handle the timeline correctly without "double-counting" their money.
+
+Design the **React Native "Onboarding Path Picker"**? I can use **Moti** to create a morphing animation where the hero text changes based on which path the user is hovering over. Would you like that?
+
+### Refined "OS" Recommendation
+
+Instead of just "Net Worth," you might want to allow users to set a **"Tracked Liquidity"** (cash they actually intend to spend/budget) and an **"Asset Value"** (house, car, stocks).
+
+* **Budgeting** would only affect the **Liquidity**.
+* **Net Worth** would be the sum of both.
+
+This distinction prevents a user from feeling "poor" just because they spent money on a coffee, even if they own a €200,000 house.
+
+Create a **"Financial Health Snapshot" widget** for your dashboard that displays this manual Net Worth alongside a "Burn Rate" (how fast their balance is dropping this month)?
 
 ## Post‑MVP (Moat: Operating System + Trust)
 
@@ -430,3 +502,71 @@ To keep the OS stable, enforce these "Design Constraints":
 You aren't replacing Excel; you are giving Excel a **Mobile Shell**. The user keeps their complex formulas (The "Brain"), and Echo provides the data and the beautiful UI (The "Body").
 
 **Next Step:** Implement the Go service to extract both **Values** and **Raw Formula Strings** from a sample `.xlsx` using `excelize`. This will prove you can "read the mind" of the user's spreadsheet.
+
+# Echo
+
+Echo, a finance-focused OS built with a ConnectGo backend and a Tamagui-powered mobile frontend that prioritizes a premium "Alive" user experience. The core of the app is a high-performance categorization engine using Aho-Corasick algorithms to normalize messy bank strings in nanoseconds. My goal is to allow users to "Bring Your Own Spreadsheet" (BYOS), where they can map any custom Excel or CSV layout to a beautiful Bento-style dashboard without touching real money or dealing with rigid, hardcoded categories.
+
+## Goals
+
+To give your community posts more "meat," here is a **Feature Highlights** list that specifically showcases the most unique parts of **Echo**. These bullet points bridge the gap between a standard budget app and a high-performance **"Alive OS."**
+
+---
+
+### **🚀 Echo OS: Key Feature Highlights**
+
+* **The Smart Mapper (BYOS Engine):** Stop fighting rigid app structures. Echo features a "Bring Your Own Spreadsheet" (BYOS) mapper that allows you to point to any column in your Excel or CSV file—regardless of language—and instantly link it to Echo's logic engine. Whether it’s cell `B31` for Rent or a column labeled "Aluguel," Echo learns your layout so you only have to map it once.
+* **"Nischa-Style" Goal Tracking:** Heavily inspired by the **50/30/20** and **Accountant Payday** routines, Echo categorizes your world into *Fundamentals*, *Fun*, and *Future You*. It transforms static goal percentages into an interactive feedback loop, calculating real-time pacing like: *"At this rate, you'll hit your 'Japan Trip' goal in 4.2 months"*.
+* **The "Alive" Bento Dashboard:** Your finances shouldn't be a flat list. Echo populates a dynamic Bento-style grid with intelligent widgets that pulse and change color based on "System Health". If your spending spikes, the UI morphs to prioritize that insight, acting as a proactive coach rather than a passive ledger.
+* **High-Speed Categorization Engine:** Powered by a **Go-based Aho-Corasick algorithm**, Echo normalizes messy bank strings (like `CAR WAL CRT DEB REVOL`) into clean merchants in nanoseconds. It processes millions of transactions per second, ensuring your dashboard is updated the moment you hit "Upload".
+* **Privacy-First "Read-Only" Philosophy:** Echo is designed for those who want total control without the risk. We never touch or move real money; we strictly handle your financial history and plans to provide an "Operating System" layer for your existing accounts.
+
+# Community
+
+To help you get the most out of your Discord and Reddit posts, here is a "Community Feedback" section. Including these questions at the end of your post will signal that you are building Echo **with** the community, not just **for** them, which is essential for a "v0.1" developer.
+
+### **Community Feedback & Discussion**
+
+I'm currently finalizing the **v0.1 MVP** and would love to get your thoughts on a few architectural decisions:
+
+1. **Excel Mapping vs. Templates:** Do you prefer mapping your own existing "messy" spreadsheets to an app, or would you rather have a "gold standard" template (like the Nischa routine) provided as a starting point?
+2. **The "Manual Gap":** Since Echo doesn't move real money, how important is a "Quick Add" manual entry feature for cash expenses to keep your monthly "Alive" dashboard accurate?
+3. **Visualization Priority:** When you look at your finance "Operating System," what is the first metric you want to see? Your Net Worth "Snapshot," or your "Monthly Pacing" against your budget?
+
+---
+
+### **Final Polish for your Project**
+
+Now that your vision is clear and your "Alive" engine is benchmarked, you have a solid foundation for your **App Studio**.
+
+**Would you like me to draft a "Technical Deep Dive" comment?** This is a separate, more detailed response you can post in the comments section for the "tech-heavy" members of the community (like on r/reactnative or r/golang) to explain your use of **ConnectGo**, **Tamagui**, and the **Aho-Corasick** engine.
+
+# Technical
+
+This "Technical Deep Dive" is designed for more technical communities (like **r/reactnative**, **r/golang**, or developer-focused Discord channels). It explains the "why" behind your stack, positioning **Echo** as a high-fidelity engineering project.
+
+---
+
+### **Technical Deep Dive: Under the Hood of Echo OS**
+
+For those interested in the stack, I’m building **Echo** with a focus on high-performance ingestion and a "Morphic" UI that feels like a native OS rather than a wrapper.
+
+**The Stack & Architecture:**
+
+* **Backend (The Engine):** Built with **Golang** using **ConnectGo (gRPC-Web)**. I chose this over REST for strict type safety between the server and the mobile client.
+* **High-Speed Ingestion:** To handle messy bank strings, I’m using the **Aho-Corasick algorithm** (via Cloudflare's implementation) for merchant pattern matching. It allows us to scan thousands of rules in  time—basically matching all patterns in a single pass of the text.
+* **Mobile Frontend:** Built with **React Native** and **Tamagui**. Tamagui allows for a shared design system that stays performant on both iOS and Android while giving me a "Bento-style" layout engine.
+* **The "Alive" UI:** We’re using **React Native Skia** for organic, hardware-accelerated background animations (dynamic blurred blobs) and **Moti (Reanimated)** for layout transitions. When a user focuses on a field or triggers a "FaceID" check, the entire UI morphs and scales in sync with the haptics.
+* **Data Integrity:** All financial math is handled in **integer cents** (int64) to avoid floating-point errors. For the Excel logic, we use **Excelize** in Go to evaluate formulas from user-uploaded planning sheets and map them to our canonical data models.
+
+The goal is to move away from "Passive History" apps and create a **Financial Workbench** where the UI reacts to the data in real-time.
+
+---
+
+### **Final Tip for your Posts**
+
+When you post this, try to include a **short screen recording** of your Skia "Initial Screen" or the "Mapping Wizard." Visual proof of high-fidelity animations usually gets 10x more engagement in developer communities than text alone.
+
+**Would you like me to draft a specific "Change Log" for your v0.2 roadmap so you can show the community exactly what you're working on next?**
+
+

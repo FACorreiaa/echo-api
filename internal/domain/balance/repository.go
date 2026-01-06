@@ -48,6 +48,57 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+// BalanceSnapshot represents a user's balance snapshot (e.g., opening balance)
+type BalanceSnapshot struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	AmountMinor  int64
+	CurrencyCode string
+	SnapshotType string // "opening_balance", "adjustment", "reconciliation"
+	EffectiveAt  time.Time
+	Notes        *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// GetOpeningBalance retrieves the user's opening balance if set
+func (r *Repository) GetOpeningBalance(ctx context.Context, userID uuid.UUID) (*BalanceSnapshot, error) {
+	query := `
+		SELECT id, user_id, amount_minor, currency_code, snapshot_type, effective_at, notes, created_at, updated_at
+		FROM balance_snapshots
+		WHERE user_id = $1 AND snapshot_type = 'opening_balance'
+	`
+	var s BalanceSnapshot
+	err := r.db.QueryRow(ctx, query, userID).Scan(
+		&s.ID, &s.UserID, &s.AmountMinor, &s.CurrencyCode,
+		&s.SnapshotType, &s.EffectiveAt, &s.Notes, &s.CreatedAt, &s.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// SetOpeningBalance creates or updates the user's opening balance
+func (r *Repository) SetOpeningBalance(ctx context.Context, userID uuid.UUID, amountMinor int64, currencyCode string) (*BalanceSnapshot, error) {
+	query := `
+		INSERT INTO balance_snapshots (user_id, amount_minor, currency_code, snapshot_type)
+		VALUES ($1, $2, $3, 'opening_balance')
+		ON CONFLICT (user_id) WHERE snapshot_type = 'opening_balance'
+		DO UPDATE SET amount_minor = $2, currency_code = $3, updated_at = NOW()
+		RETURNING id, user_id, amount_minor, currency_code, snapshot_type, effective_at, notes, created_at, updated_at
+	`
+	var s BalanceSnapshot
+	err := r.db.QueryRow(ctx, query, userID, amountMinor, currencyCode).Scan(
+		&s.ID, &s.UserID, &s.AmountMinor, &s.CurrencyCode,
+		&s.SnapshotType, &s.EffectiveAt, &s.Notes, &s.CreatedAt, &s.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 // GetAccountBalances computes balance for each account by summing transactions
 func (r *Repository) GetAccountBalances(ctx context.Context, userID uuid.UUID) ([]AccountBalanceData, error) {
 	query := `

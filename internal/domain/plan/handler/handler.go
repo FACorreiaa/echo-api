@@ -380,7 +380,7 @@ func (h *PlanHandler) AnalyzeExcelForPlan(ctx context.Context, req *connect.Requ
 	// Convert to proto
 	sheets := make([]*echov1.ExcelSheetAnalysis, len(result.Sheets))
 	for i, s := range result.Sheets {
-		sheets[i] = &echov1.ExcelSheetAnalysis{
+		analysis := &echov1.ExcelSheetAnalysis{
 			Name:               s.Name,
 			IsLivingPlan:       s.IsLivingPlan,
 			RowCount:           int32(s.RowCount),
@@ -388,6 +388,19 @@ func (h *PlanHandler) AnalyzeExcelForPlan(ctx context.Context, req *connect.Requ
 			DetectedCategories: s.DetectedCategories,
 			MonthColumns:       s.MonthColumns,
 		}
+
+		// Include detected column mapping if available
+		if s.DetectedMapping != nil {
+			analysis.DetectedMapping = &echov1.DetectedColumnMapping{
+				CategoryColumn:   s.DetectedMapping.CategoryColumn,
+				ValueColumn:      s.DetectedMapping.ValueColumn,
+				HeaderRow:        int32(s.DetectedMapping.HeaderRow),
+				PercentageColumn: s.DetectedMapping.PercentageColumn,
+				Confidence:       s.DetectedMapping.Confidence,
+			}
+		}
+
+		sheets[i] = analysis
 	}
 
 	return connect.NewResponse(&echov1.AnalyzeExcelForPlanResponse{

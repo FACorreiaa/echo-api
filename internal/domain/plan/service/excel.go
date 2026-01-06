@@ -31,7 +31,7 @@ func (s *PlanService) AnalyzeExcel(r io.Reader) (*ExcelAnalysisResult, error) {
 	}
 
 	for i, a := range analyses {
-		result.Sheets[i] = SheetInfo{
+		sheetInfo := SheetInfo{
 			Name:               a.Name,
 			IsLivingPlan:       a.Type == excel.SheetTypeLivingPlan,
 			RowCount:           a.RowCount,
@@ -39,6 +39,19 @@ func (s *PlanService) AnalyzeExcel(r io.Reader) (*ExcelAnalysisResult, error) {
 			DetectedCategories: a.DetectedCategories,
 			MonthColumns:       a.MonthColumns,
 		}
+
+		// Include detected column mapping if available
+		if a.DetectedMapping != nil {
+			sheetInfo.DetectedMapping = &ColumnMappingInfo{
+				CategoryColumn:   a.DetectedMapping.CategoryColumn,
+				ValueColumn:      a.DetectedMapping.ValueColumn,
+				HeaderRow:        a.DetectedMapping.HeaderRow,
+				PercentageColumn: a.DetectedMapping.PercentageColumn,
+				Confidence:       a.DetectedMapping.Confidence,
+			}
+		}
+
+		result.Sheets[i] = sheetInfo
 	}
 
 	return result, nil

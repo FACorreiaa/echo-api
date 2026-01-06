@@ -20,14 +20,24 @@ const (
 
 // SheetAnalysis contains the results of analyzing an Excel sheet
 type SheetAnalysis struct {
-	Name               string    `json:"name"`
-	Type               SheetType `json:"type"`
-	RowCount           int       `json:"row_count"`
-	ColCount           int       `json:"col_count"`
-	FormulaCount       int       `json:"formula_count"`
-	DetectedCategories []string  `json:"detected_categories,omitempty"`
-	MonthColumns       []string  `json:"month_columns,omitempty"`
-	Score              int       `json:"score"` // Higher = more likely to be the main budget sheet
+	Name               string         `json:"name"`
+	Type               SheetType      `json:"type"`
+	RowCount           int            `json:"row_count"`
+	ColCount           int            `json:"col_count"`
+	FormulaCount       int            `json:"formula_count"`
+	DetectedCategories []string       `json:"detected_categories,omitempty"`
+	MonthColumns       []string       `json:"month_columns,omitempty"`
+	DetectedMapping    *ColumnMapping `json:"detected_mapping,omitempty"` // Auto-detected column layout
+	Score              int            `json:"score"`                      // Higher = more likely to be the main budget sheet
+}
+
+// ColumnMapping represents the detected or configured column layout for import
+type ColumnMapping struct {
+	CategoryColumn   string  `json:"category_column"`             // Column containing category names (e.g., "A")
+	ValueColumn      string  `json:"value_column"`                // Column containing budget values (e.g., "C")
+	HeaderRow        int     `json:"header_row"`                  // Row number where headers start (1-indexed)
+	PercentageColumn string  `json:"percentage_column,omitempty"` // Optional column with percentages
+	Confidence       float64 `json:"confidence"`                  // Detection confidence 0-1
 }
 
 // CategoryExtraction represents an extracted category from the sheet
@@ -128,27 +138,66 @@ func (p *Parser) AnalyzeSheet(sheetName string) (*SheetAnalysis, error) {
 	categories := make([]string, 0)
 	monthColumns := make([]string, 0)
 
-	for rowIdx := 1; rowIdx <= analysis.RowCount; rowIdx++ {
+	// Track column types for auto-detection
+	colTextCount := make(map[int]int)
+	colNumericCount := make(map[int]int)
+	colFormulaCount := make(map[int]int)
+	colPercentCount := make(map[int]int)
+	headerRow := 1
+
+	for rowIdx := 1; rowIdx <= analysis.RowCount && rowIdx <= 100; rowIdx++ { // Limit to first 100 rows for performance
 		for colIdx := 1; colIdx <= analysis.ColCount; colIdx++ {
 			cell, _ := excelize.CoordinatesToCellName(colIdx, rowIdx)
 			formula, _ := p.file.GetCellFormula(sheetName, cell)
+			value, _ := p.file.GetCellValue(sheetName, cell)
+
 			if formula != "" {
 				formulaCount++
+				colFormulaCount[colIdx]++
 			}
 
-			// Check first row for month headers
-			if rowIdx == 1 || rowIdx == 2 {
-				value, _ := p.file.GetCellValue(sheetName, cell)
-				if isMonthHeader(value) {
-					monthColumns = append(monthColumns, value)
+			// Detect month headers anywhere in first 10 rows
+			if rowIdx <= 10 && isMonthHeader(value) {
+				monthColumns = append(monthColumns, value)
+				// Update header row if we find month headers
+				if rowIdx > headerRow {
+					headerRow = rowIdx
+				}
+			}
+
+			// Analyze column content types (skip first few rows which might be headers)
+			if rowIdx > 5 && rowIdx <= 50 {
+				if value != "" {
+					if _, parseErr := parseNumericValue(value); parseErr == nil {
+						colNumericCount[colIdx]++
+						// Check for percentage values
+						if strings.Contains(value, "%") || (len(value) < 6 && strings.Contains(formula, "/")) {
+							colPercentCount[colIdx]++
+						}
+					} else if isCategoryLike(value) {
+						colTextCount[colIdx]++
+					}
 				}
 			}
 
 			// Check first column for category names
 			if colIdx == 1 {
-				value, _ := p.file.GetCellValue(sheetName, cell)
 				if isCategoryLike(value) {
 					categories = append(categories, value)
+				}
+			}
+		}
+	}
+
+	// Now count formulas in entire sheet if it looks like a living plan
+	if formulaCount > 10 {
+		// Full formula count for scoring
+		for rowIdx := 1; rowIdx <= analysis.RowCount; rowIdx++ {
+			for colIdx := 1; colIdx <= analysis.ColCount; colIdx++ {
+				cell, _ := excelize.CoordinatesToCellName(colIdx, rowIdx)
+				formula, _ := p.file.GetCellFormula(sheetName, cell)
+				if formula != "" {
+					formulaCount++
 				}
 			}
 		}
@@ -157,6 +206,9 @@ func (p *Parser) AnalyzeSheet(sheetName string) (*SheetAnalysis, error) {
 	analysis.FormulaCount = formulaCount
 	analysis.DetectedCategories = categories
 	analysis.MonthColumns = monthColumns
+
+	// Auto-detect column mapping
+	analysis.DetectedMapping = p.detectColumnMapping(sheetName, colTextCount, colNumericCount, colPercentCount, colFormulaCount, headerRow)
 
 	// Determine sheet type and score
 	if formulaCount > 10 {
@@ -177,6 +229,134 @@ func (p *Parser) AnalyzeSheet(sheetName string) (*SheetAnalysis, error) {
 	}
 
 	return analysis, nil
+}
+
+// detectColumnMapping analyzes column content to determine the likely mapping
+func (p *Parser) detectColumnMapping(sheetName string, textCounts, numericCounts, percentCounts, formulaCounts map[int]int, detectedHeaderRow int) *ColumnMapping {
+	// Find the column with most text (likely categories)
+	maxTextCol := 0
+	maxTextCount := 0
+	for col, count := range textCounts {
+		if count > maxTextCount {
+			maxTextCount = count
+			maxTextCol = col
+		}
+	}
+
+	// Find the column with most numerics/formulas (likely values)
+	maxNumCol := 0
+	maxNumCount := 0
+	for col, count := range numericCounts {
+		formulaBoost := formulaCounts[col] // Prefer columns with formulas
+		total := count + formulaBoost*2
+		if total > maxNumCount && col != maxTextCol {
+			maxNumCount = total
+			maxNumCol = col
+		}
+	}
+
+	// Find percentage column (if separate from value column)
+	maxPercentCol := 0
+	maxPercentCount := 0
+	for col, count := range percentCounts {
+		if count > maxPercentCount && col != maxTextCol && col != maxNumCol {
+			maxPercentCount = count
+			maxPercentCol = col
+		}
+	}
+
+	// Convert column indices to letters
+	catCol := idxToColLetter(maxTextCol)
+	valCol := idxToColLetter(maxNumCol)
+	percentCol := ""
+	if maxPercentCol > 0 {
+		percentCol = idxToColLetter(maxPercentCol)
+	}
+
+	// Calculate confidence based on column separation and counts
+	confidence := 0.5
+	if maxTextCount > 5 && maxNumCount > 5 {
+		confidence = 0.8
+	}
+	if maxTextCol == 1 && maxNumCount > 10 {
+		confidence = 0.9
+	}
+	if len(catCol) > 0 && len(valCol) > 0 && catCol != valCol {
+		confidence += 0.05
+	}
+
+	// Default to A/C if detection failed (common layout)
+	if catCol == "" {
+		catCol = "A"
+		confidence = 0.3
+	}
+	if valCol == "" {
+		valCol = "C"
+		confidence = 0.3
+	}
+
+	// Detect actual header row by looking for the row with month names or column labels
+	headerRow := detectedHeaderRow
+	if headerRow <= 1 {
+		// Scan first 10 rows for potential headers
+		headerRow = p.detectHeaderRow(sheetName, maxTextCol, maxNumCol)
+	}
+
+	return &ColumnMapping{
+		CategoryColumn:   catCol,
+		ValueColumn:      valCol,
+		HeaderRow:        headerRow,
+		PercentageColumn: percentCol,
+		Confidence:       confidence,
+	}
+}
+
+// detectHeaderRow finds the row that likely contains column headers
+func (p *Parser) detectHeaderRow(sheetName string, textCol, valueCol int) int {
+	rows, err := p.file.GetRows(sheetName)
+	if err != nil || len(rows) == 0 {
+		return 1
+	}
+
+	for rowIdx := 1; rowIdx <= 10 && rowIdx <= len(rows); rowIdx++ {
+		row := rows[rowIdx-1]
+
+		// Check if this row has text labels that look like headers
+		headerHints := 0
+		for colIdx := 1; colIdx <= len(row); colIdx++ {
+			value := strings.TrimSpace(row[colIdx-1])
+			valueLower := strings.ToLower(value)
+
+			// Common header keywords
+			if strings.Contains(valueLower, "meses") || strings.Contains(valueLower, "month") ||
+				strings.Contains(valueLower, "categoria") || strings.Contains(valueLower, "category") ||
+				strings.Contains(valueLower, "valor") || strings.Contains(valueLower, "value") ||
+				strings.Contains(valueLower, "jan") || strings.Contains(valueLower, "atual") ||
+				strings.Contains(valueLower, "current") || strings.Contains(valueLower, "%") {
+				headerHints++
+			}
+		}
+
+		if headerHints >= 2 {
+			return rowIdx + 1 // Data starts after header
+		}
+	}
+
+	return 1 // Default to row 1
+}
+
+// idxToColLetter converts a 1-based column index to Excel column letter (1 -> A, 2 -> B, etc.)
+func idxToColLetter(idx int) string {
+	if idx <= 0 {
+		return ""
+	}
+	result := ""
+	for idx > 0 {
+		idx--
+		result = string(rune('A'+idx%26)) + result
+		idx /= 26
+	}
+	return result
 }
 
 // ExtractCategories extracts categories and items from a budget sheet

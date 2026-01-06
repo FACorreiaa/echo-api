@@ -423,6 +423,171 @@ func toProtoTransactionSource(s string) echov1.TransactionSource {
 	}
 }
 
+// GetMonthlyInsights returns monthly insights with "3 things changed" and "1 action".
+func (h *InsightsHandler) GetMonthlyInsights(
+	ctx context.Context,
+	req *connect.Request[echov1.GetMonthlyInsightsRequest],
+) (*connect.Response[echov1.GetMonthlyInsightsResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok || userIDStr == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("invalid user ID in context"))
+	}
+
+	monthStart := req.Msg.MonthStart.AsTime()
+	mi, err := h.svc.GetMonthlyInsights(ctx, userID, monthStart)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Convert domain model to proto
+	protoInsights := &echov1.MonthlyInsights{
+		Id:                 mi.ID.String(),
+		UserId:             mi.UserID.String(),
+		MonthStart:         timestamppb.New(mi.MonthStart),
+		TotalSpend:         toMoney(mi.TotalSpend),
+		TotalIncome:        toMoney(mi.TotalIncome),
+		Net:                toMoney(mi.Net),
+		SpendVsLastMonth:   toMoney(mi.SpendVsLastMonth),
+		SpendChangePercent: mi.SpendChangePercent,
+		Highlights:         mi.Highlights,
+		CreatedAt:          timestamppb.New(mi.CreatedAt),
+	}
+
+	// Add top categories
+	for _, cat := range mi.TopCategories {
+		protoCat := &echov1.CategorySpend{
+			CategoryId: cat.CategoryID.String(),
+			Total:      toMoney(cat.AmountCents),
+		}
+		protoInsights.TopCategories = append(protoInsights.TopCategories, protoCat)
+	}
+
+	// Add top merchants
+	for _, m := range mi.TopMerchants {
+		protoMerchant := &echov1.MerchantSpend{
+			MerchantName: m.MerchantName,
+			Total:        toMoney(m.AmountCents),
+		}
+		protoInsights.TopMerchants = append(protoInsights.TopMerchants, protoMerchant)
+	}
+
+	// Add changes ("3 things that changed")
+	for _, change := range mi.Changes {
+		protoChange := &echov1.InsightChange{
+			Type:          changeTypeToProto(change.Type),
+			Title:         change.Title,
+			Description:   change.Description,
+			AmountChange:  toMoney(change.AmountChange),
+			PercentChange: change.PercentChange,
+			Icon:          change.Icon,
+			Sentiment:     changeSentimentToProto(change.Sentiment),
+		}
+		if change.CategoryID != nil {
+			catID := change.CategoryID.String()
+			protoChange.CategoryId = &catID
+		}
+		if change.MerchantName != nil {
+			protoChange.MerchantName = change.MerchantName
+		}
+		protoInsights.Changes = append(protoInsights.Changes, protoChange)
+	}
+
+	// Add recommended action ("1 action to take")
+	if mi.RecommendedAction != nil {
+		protoInsights.RecommendedAction = &echov1.ActionRecommendation{
+			Type:            actionTypeToProto(mi.RecommendedAction.Type),
+			Title:           mi.RecommendedAction.Title,
+			Description:     mi.RecommendedAction.Description,
+			CtaText:         mi.RecommendedAction.CTAText,
+			CtaAction:       mi.RecommendedAction.CTAAction,
+			PotentialImpact: toMoney(mi.RecommendedAction.PotentialImpact),
+			Priority:        actionPriorityToProto(mi.RecommendedAction.Priority),
+			Icon:            mi.RecommendedAction.Icon,
+		}
+	}
+
+	return connect.NewResponse(&echov1.GetMonthlyInsightsResponse{
+		Insights: protoInsights,
+	}), nil
+}
+
+// changeTypeToProto converts domain InsightChangeType to proto
+func changeTypeToProto(t insights.InsightChangeType) echov1.InsightChangeType {
+	switch t {
+	case insights.InsightChangeTypeCategoryIncrease:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_CATEGORY_INCREASE
+	case insights.InsightChangeTypeCategoryDecrease:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_CATEGORY_DECREASE
+	case insights.InsightChangeTypeNewMerchant:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_NEW_MERCHANT
+	case insights.InsightChangeTypeMerchantIncrease:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_MERCHANT_INCREASE
+	case insights.InsightChangeTypeSubscriptionDetected:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_SUBSCRIPTION_DETECTED
+	case insights.InsightChangeTypeGoalProgress:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_GOAL_PROGRESS
+	case insights.InsightChangeTypeIncomeChange:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_INCOME_CHANGE
+	case insights.InsightChangeTypeSavingsRate:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_SAVINGS_RATE
+	default:
+		return echov1.InsightChangeType_INSIGHT_CHANGE_TYPE_UNSPECIFIED
+	}
+}
+
+// changeSentimentToProto converts domain InsightChangeSentiment to proto
+func changeSentimentToProto(s insights.InsightChangeSentiment) echov1.InsightChangeSentiment {
+	switch s {
+	case insights.InsightChangeSentimentPositive:
+		return echov1.InsightChangeSentiment_INSIGHT_CHANGE_SENTIMENT_POSITIVE
+	case insights.InsightChangeSentimentNegative:
+		return echov1.InsightChangeSentiment_INSIGHT_CHANGE_SENTIMENT_NEGATIVE
+	case insights.InsightChangeSentimentNeutral:
+		return echov1.InsightChangeSentiment_INSIGHT_CHANGE_SENTIMENT_NEUTRAL
+	default:
+		return echov1.InsightChangeSentiment_INSIGHT_CHANGE_SENTIMENT_UNSPECIFIED
+	}
+}
+
+// actionTypeToProto converts domain ActionType to proto
+func actionTypeToProto(t insights.ActionType) echov1.ActionType {
+	switch t {
+	case insights.ActionTypeReviewSubscriptions:
+		return echov1.ActionType_ACTION_TYPE_REVIEW_SUBSCRIPTIONS
+	case insights.ActionTypeReduceCategory:
+		return echov1.ActionType_ACTION_TYPE_REDUCE_CATEGORY
+	case insights.ActionTypeContributeToGoal:
+		return echov1.ActionType_ACTION_TYPE_CONTRIBUTE_TO_GOAL
+	case insights.ActionTypeCategorizeTransactions:
+		return echov1.ActionType_ACTION_TYPE_CATEGORIZE_TRANSACTIONS
+	case insights.ActionTypeSetBudget:
+		return echov1.ActionType_ACTION_TYPE_SET_BUDGET
+	case insights.ActionTypeReviewLargeExpense:
+		return echov1.ActionType_ACTION_TYPE_REVIEW_LARGE_EXPENSE
+	default:
+		return echov1.ActionType_ACTION_TYPE_UNSPECIFIED
+	}
+}
+
+// actionPriorityToProto converts domain ActionPriority to proto
+func actionPriorityToProto(p insights.ActionPriority) echov1.ActionPriority {
+	switch p {
+	case insights.ActionPriorityLow:
+		return echov1.ActionPriority_ACTION_PRIORITY_LOW
+	case insights.ActionPriorityMedium:
+		return echov1.ActionPriority_ACTION_PRIORITY_MEDIUM
+	case insights.ActionPriorityHigh:
+		return echov1.ActionPriority_ACTION_PRIORITY_HIGH
+	default:
+		return echov1.ActionPriority_ACTION_PRIORITY_UNSPECIFIED
+	}
+}
+
 // GetWrapped returns the wrapped summary for a period.
 func (h *InsightsHandler) GetWrapped(
 	ctx context.Context,
