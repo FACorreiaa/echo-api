@@ -28,3 +28,6 @@ WHERE
 CREATE INDEX idx_balance_snapshots_user_id ON balance_snapshots (user_id);
 
 CREATE INDEX idx_balance_snapshots_effective_at ON balance_snapshots (user_id, effective_at DESC);
+
+-- +goose Down
+DROP TABLE IF EXISTS balance_snapshots;

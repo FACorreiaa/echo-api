@@ -219,7 +219,9 @@ func (d *Dependencies) initServices() error {
 // initHandlers initializes all handler dependencies
 func (d *Dependencies) initHandlers() error {
 	d.AuthHandler = handler.NewAuthHandler(d.AuthService)
-	d.FinanceHandler = financehandler.NewFinanceHandler(d.ImportService, d.ImportRepo, d.CategorizationService)
+	d.FinanceHandler = financehandler.NewFinanceHandler(d.ImportService, d.ImportRepo, d.CategorizationService).
+		WithGoalsService(d.GoalsService).
+		WithSubscriptionsService(d.SubscriptionsService)
 	d.ImportHandler = importhandler.NewImportHandler(d.ImportService, d.FileStorage, d.Logger)
 	d.InsightsHandler = insightshandler.NewInsightsHandler(d.InsightsService)
 	d.BalanceHandler = balancehandler.NewBalanceHandler(d.BalanceService)

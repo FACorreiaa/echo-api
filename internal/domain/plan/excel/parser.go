@@ -28,6 +28,7 @@ type SheetAnalysis struct {
 	DetectedCategories []string       `json:"detected_categories,omitempty"`
 	MonthColumns       []string       `json:"month_columns,omitempty"`
 	DetectedMapping    *ColumnMapping `json:"detected_mapping,omitempty"` // Auto-detected column layout
+	PreviewRows        [][]string     `json:"preview_rows,omitempty"`     // First 5 rows for preview
 	Score              int            `json:"score"`                      // Higher = more likely to be the main budget sheet
 }
 
@@ -228,6 +229,9 @@ func (p *Parser) AnalyzeSheet(sheetName string) (*SheetAnalysis, error) {
 		analysis.Score += 50
 	}
 
+	// Extract preview rows (first 5 data rows for UI display)
+	analysis.PreviewRows = p.extractPreviewRows(rows, 5)
+
 	return analysis, nil
 }
 
@@ -355,6 +359,33 @@ func idxToColLetter(idx int) string {
 		idx--
 		result = string(rune('A'+idx%26)) + result
 		idx /= 26
+	}
+	return result
+}
+
+// extractPreviewRows returns the first N rows of data for UI preview
+func (p *Parser) extractPreviewRows(rows [][]string, maxRows int) [][]string {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	// Determine how many rows to include (max 5, include header + data rows)
+	count := maxRows
+	if count > len(rows) {
+		count = len(rows)
+	}
+
+	result := make([][]string, count)
+	for i := 0; i < count; i++ {
+		// Limit columns to first 10 for preview
+		maxCols := 10
+		if maxCols > len(rows[i]) {
+			maxCols = len(rows[i])
+		}
+		result[i] = make([]string, maxCols)
+		for j := 0; j < maxCols; j++ {
+			result[i][j] = rows[i][j]
+		}
 	}
 	return result
 }

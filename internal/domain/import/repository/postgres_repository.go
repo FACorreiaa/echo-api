@@ -392,7 +392,17 @@ func (r *PostgresImportRepository) BulkInsertTransactions(ctx context.Context, u
 			)
 		}
 
-		query += " ON CONFLICT (user_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING"
+		// ON CONFLICT: Reconciliation Loop
+		// If a duplicate is found (same date+description+amount), merge:
+		// - Keep the existing category_id if it was manually set
+		// - Update source and external_id to link with bank record
+		query += ` ON CONFLICT (user_id, source, external_id) WHERE external_id IS NOT NULL 
+		           DO UPDATE SET 
+		             import_job_id = EXCLUDED.import_job_id,
+		             institution_name = COALESCE(EXCLUDED.institution_name, transactions.institution_name),
+		             merchant_name = COALESCE(EXCLUDED.merchant_name, transactions.merchant_name),
+		             updated_at = NOW()
+		           WHERE transactions.source = 'manual' OR transactions.category_id IS NULL`
 
 		result, err := r.pool.Exec(ctx, query, args...)
 		if err != nil {

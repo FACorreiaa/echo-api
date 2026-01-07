@@ -46,16 +46,16 @@ Focus: make something people *want to come back to* and *share*.
 - **Transaction normalization:** merchant cleanup + categorization with user overrides. User should be able to edit transactions as well as categories. 
 - **Spending overview:** top categories, merchants, trends, month-to-date vs last month.
 - **Foundation v1:** optional manual net worth entries + basic runway metric.
-[] - **Goals/buckets v1:** targets, timelines, progress pacing, “behind plan” nudges.
-[] - **Subscriptions v1:** detect recurring charges; one-tap “review/cancel checklist”.
-[] - **Monthly insights:** “3 things changed this month” + “1 action to take this week”.
+[] Backend is done - **Goals/buckets v1:** targets, timelines, progress pacing, “behind plan” nudges.
+[] Backend is done - **Subscriptions v1:** detect recurring charges; one-tap “review/cancel checklist”.
+[] Backend is done - **Monthly insights:** “3 things changed this month” + “1 action to take this week”.
 - **Mini-wrapped:** shareable monthly summary cards (no sensitive details by default).
 - **BYOS v1:** upload a spreadsheet template + field mapping; export computed views as shareable/read-only.
 - **Payments (optional in MVP):** Stripe Checkout for premium plan (behind feature flags).
 [x]- **XLSX Import:** Extend the import service to handle Excel files
 - **Category Assignment:** Auto-categorize transactions or let users assign categories, add more metadata to transactions
 - **Monthly Insights:** Aggregated spending by category/month
-- **Empty State Dashboard:** Prompt new users to import
+[x]- **Empty State Dashboard:** Prompt new users to import
 
 - Simulate a budget for the month. Set budget as 2000. The net worth is now 2000. 
 if transactions add money, that value will increase. But if the transactions are a cost, for example rent, that value will decrease. a coffee, value decreases. 

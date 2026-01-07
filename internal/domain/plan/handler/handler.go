@@ -400,6 +400,16 @@ func (h *PlanHandler) AnalyzeExcelForPlan(ctx context.Context, req *connect.Requ
 			}
 		}
 
+		// Include preview rows for UI display
+		if len(s.PreviewRows) > 0 {
+			analysis.PreviewRows = make([]*echov1.ExcelPreviewRow, len(s.PreviewRows))
+			for j, row := range s.PreviewRows {
+				analysis.PreviewRows[j] = &echov1.ExcelPreviewRow{
+					Cells: row,
+				}
+			}
+		}
+
 		sheets[i] = analysis
 	}
 

@@ -51,6 +51,9 @@ func (s *PlanService) AnalyzeExcel(r io.Reader) (*ExcelAnalysisResult, error) {
 			}
 		}
 
+		// Include preview rows for UI display
+		sheetInfo.PreviewRows = a.PreviewRows
+
 		result.Sheets[i] = sheetInfo
 	}
 

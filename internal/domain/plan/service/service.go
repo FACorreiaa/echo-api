@@ -377,6 +377,7 @@ type SheetInfo struct {
 	DetectedCategories []string           `json:"detected_categories"`
 	MonthColumns       []string           `json:"month_columns"`
 	DetectedMapping    *ColumnMappingInfo `json:"detected_mapping,omitempty"` // Auto-detected column layout
+	PreviewRows        [][]string         `json:"preview_rows,omitempty"`     // First 5 rows for UI preview
 }
 
 // ColumnMappingInfo contains auto-detected column positions for import

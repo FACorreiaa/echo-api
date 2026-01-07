@@ -165,19 +165,24 @@ func ParseFlexibleDate(raw string, preferredFormat string, loc *time.Location) (
 // convertDateFormat converts user-friendly format strings to Go format
 // e.g., "DD-MM-YYYY" -> "02-01-2006"
 func convertDateFormat(format string) string {
-	replacements := map[string]string{
-		"YYYY": "2006",
-		"YY":   "06",
-		"MM":   "01",
-		"DD":   "02",
-		"HH":   "15",
-		"mm":   "04",
-		"ss":   "05",
+	// Use ordered slice to ensure longer patterns are replaced first
+	// (e.g., YYYY before YY to avoid "YYYY" becoming "0606")
+	replacements := []struct {
+		pattern string
+		goFmt   string
+	}{
+		{"YYYY", "2006"},
+		{"YY", "06"},
+		{"MM", "01"},
+		{"DD", "02"},
+		{"HH", "15"},
+		{"mm", "04"},
+		{"ss", "05"},
 	}
 
 	result := format
-	for pattern, goFmt := range replacements {
-		result = strings.ReplaceAll(result, pattern, goFmt)
+	for _, r := range replacements {
+		result = strings.ReplaceAll(result, r.pattern, r.goFmt)
 	}
 	return result
 }

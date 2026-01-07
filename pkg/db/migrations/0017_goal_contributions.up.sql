@@ -23,3 +23,9 @@ WHERE
 -- Add occurrence tracking to recurring_subscriptions
 ALTER TABLE recurring_subscriptions
 ADD COLUMN IF NOT EXISTS occurrence_count INT NOT NULL DEFAULT 0;
+
+-- +goose Down
+ALTER TABLE recurring_subscriptions
+DROP COLUMN IF EXISTS occurrence_count;
+
+DROP TABLE IF EXISTS goal_contributions;
