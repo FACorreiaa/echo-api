@@ -46,6 +46,28 @@ const (
 	FieldTypeText       FieldType = "text"
 )
 
+// ItemBehavior represents the mathematical behavior of an item type
+type ItemBehavior string
+
+const (
+	ItemBehaviorOutflow   ItemBehavior = "outflow"   // Reduces surplus (expenses)
+	ItemBehaviorInflow    ItemBehavior = "inflow"    // Adds to surplus (income)
+	ItemBehaviorAsset     ItemBehavior = "asset"     // Tracked on balance sheet (+)
+	ItemBehaviorLiability ItemBehavior = "liability" // Tracked on balance sheet (-)
+)
+
+// TargetTab represents which UI tab displays items of this type
+type TargetTab string
+
+const (
+	TargetTabBudgets     TargetTab = "budgets"
+	TargetTabRecurring   TargetTab = "recurring"
+	TargetTabGoals       TargetTab = "goals"
+	TargetTabIncome      TargetTab = "income"
+	TargetTabPortfolio   TargetTab = "portfolio"
+	TargetTabLiabilities TargetTab = "liabilities"
+)
+
 // UserPlan represents a user's financial plan
 type UserPlan struct {
 	ID                 uuid.UUID      `db:"id"`
@@ -104,9 +126,26 @@ type PlanItem struct {
 	SortOrder     int        `db:"sort_order"`
 	MinValue      *int64     `db:"min_value"`
 	MaxValue      *int64     `db:"max_value"`
-	Labels        []byte     `db:"labels"` // JSONB
+	Labels        []byte     `db:"labels"`    // JSONB
+	ConfigID      *uuid.UUID `db:"config_id"` // Link to dynamic item config
 	CreatedAt     time.Time  `db:"created_at"`
 	UpdatedAt     time.Time  `db:"updated_at"`
+}
+
+// ItemConfig represents a user-configurable item type
+type ItemConfig struct {
+	ID        uuid.UUID    `db:"id"`
+	UserID    uuid.UUID    `db:"user_id"`
+	Label     string       `db:"label"`
+	ShortCode string       `db:"short_code"`
+	Behavior  ItemBehavior `db:"behavior"`
+	TargetTab TargetTab    `db:"target_tab"`
+	ColorHex  string       `db:"color_hex"`
+	Icon      string       `db:"icon"`
+	IsSystem  bool         `db:"is_system"`
+	SortOrder int          `db:"sort_order"`
+	CreatedAt time.Time    `db:"created_at"`
+	UpdatedAt time.Time    `db:"updated_at"`
 }
 
 // PlanRepository defines the interface for plan data access
@@ -140,6 +179,13 @@ type PlanRepository interface {
 	// Bulk operations
 	CreatePlanWithStructure(ctx context.Context, plan *UserPlan, groups []*PlanCategoryGroup, categories []*PlanCategory, items []*PlanItem) error
 	DuplicatePlan(ctx context.Context, sourcePlanID uuid.UUID, newName string, userID uuid.UUID) (*UserPlan, error)
+
+	// Item Configs (dynamic type configurations)
+	ListItemConfigs(ctx context.Context, userID uuid.UUID) ([]*ItemConfig, error)
+	GetItemConfigByID(ctx context.Context, configID uuid.UUID) (*ItemConfig, error)
+	CreateItemConfig(ctx context.Context, config *ItemConfig) error
+	UpdateItemConfig(ctx context.Context, config *ItemConfig) error
+	DeleteItemConfig(ctx context.Context, configID uuid.UUID) error
 }
 
 // CreatePlanInput is used for creating a new plan with its full structure

@@ -1,9 +1,9 @@
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20251209175733-2a1774d88802.1 h1:j9yeqTWEFrtimt8Nng2MIeRrpoCvQzM9/g25XTvqUGg=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20251209175733-2a1774d88802.1/go.mod h1:tvtbpgaVXZX4g6Pn+AnzFycuRK3MOz5HJfEGeEllXYM=
-buf.build/gen/go/echo-tracker/echo/connectrpc/go v1.19.1-20260107100850-08c067f888ef.2 h1:jA27FZ4gK7LsE4gitHiv7vdsGHJtfQILdxtC/YcZ38k=
-buf.build/gen/go/echo-tracker/echo/connectrpc/go v1.19.1-20260107100850-08c067f888ef.2/go.mod h1:puNi406+Y5Dy/p/WdlcxN270Xi+a1pHlkNNiS4hMGvo=
-buf.build/gen/go/echo-tracker/echo/protocolbuffers/go v1.36.11-20260107100850-08c067f888ef.1 h1:bibDBv4Yy5+rjHhHqQnCP6TqgaJVQqmK6Vy6dlrnA74=
-buf.build/gen/go/echo-tracker/echo/protocolbuffers/go v1.36.11-20260107100850-08c067f888ef.1/go.mod h1:dYpEcYPKqUGWvjvQiaM2MOsXsAxdEdQp/sOCWlXF/Y8=
+buf.build/gen/go/echo-tracker/echo/connectrpc/go v1.19.1-20260108221518-cfdea7cda225.2 h1:slUzRQBYmXG1EWMdtLePQIOQo19yV+fAOBuHY+hXdxE=
+buf.build/gen/go/echo-tracker/echo/connectrpc/go v1.19.1-20260108221518-cfdea7cda225.2/go.mod h1:92GS+BBMkwR6YNrrfqegKuD71f+foPyqWfh/d1Bs3wc=
+buf.build/gen/go/echo-tracker/echo/protocolbuffers/go v1.36.11-20260108221518-cfdea7cda225.1 h1:69OPv/tkiOSWV6CgFEobig+wEsizWSlMcMxSMQdG27o=
+buf.build/gen/go/echo-tracker/echo/protocolbuffers/go v1.36.11-20260108221518-cfdea7cda225.1/go.mod h1:dYpEcYPKqUGWvjvQiaM2MOsXsAxdEdQp/sOCWlXF/Y8=
 buf.build/go/protovalidate v1.1.0 h1:pQqEQRpOo4SqS60qkvmhLTTQU9JwzEvdyiqAtXa5SeY=
 buf.build/go/protovalidate v1.1.0/go.mod h1:bGZcPiAQDC3ErCHK3t74jSoJDFOs2JH3d7LWuTEIdss=
 cel.dev/expr v0.25.1 h1:1KrZg61W6TWSxuNZ37Xy49ps13NUovb66QLprthtwi4=

@@ -684,6 +684,129 @@ func (r *PostgresPlanRepository) DuplicatePlan(ctx context.Context, sourcePlanID
 	return r.GetPlanByID(ctx, newPlanID)
 }
 
+// ============================================================================
+// Item Configs (Dynamic Type Configurations)
+// ============================================================================
+
+// ListItemConfigs retrieves all item configs for a user
+func (r *PostgresPlanRepository) ListItemConfigs(ctx context.Context, userID uuid.UUID) ([]*ItemConfig, error) {
+	query := `
+		SELECT id, user_id, label, short_code, behavior, target_tab,
+		       color_hex, icon, is_system, sort_order, created_at, updated_at
+		FROM plan_item_configs
+		WHERE user_id = $1
+		ORDER BY sort_order, label
+	`
+
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list item configs: %w", err)
+	}
+	defer rows.Close()
+
+	var configs []*ItemConfig
+	for rows.Next() {
+		var c ItemConfig
+		if err := rows.Scan(
+			&c.ID, &c.UserID, &c.Label, &c.ShortCode, &c.Behavior, &c.TargetTab,
+			&c.ColorHex, &c.Icon, &c.IsSystem, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan item config: %w", err)
+		}
+		configs = append(configs, &c)
+	}
+
+	return configs, nil
+}
+
+// GetItemConfigByID retrieves a config by ID
+func (r *PostgresPlanRepository) GetItemConfigByID(ctx context.Context, configID uuid.UUID) (*ItemConfig, error) {
+	query := `
+		SELECT id, user_id, label, short_code, behavior, target_tab,
+		       color_hex, icon, is_system, sort_order, created_at, updated_at
+		FROM plan_item_configs
+		WHERE id = $1
+	`
+
+	var c ItemConfig
+	err := r.pool.QueryRow(ctx, query, configID).Scan(
+		&c.ID, &c.UserID, &c.Label, &c.ShortCode, &c.Behavior, &c.TargetTab,
+		&c.ColorHex, &c.Icon, &c.IsSystem, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get item config: %w", err)
+	}
+
+	return &c, nil
+}
+
+// CreateItemConfig creates a new item config
+func (r *PostgresPlanRepository) CreateItemConfig(ctx context.Context, config *ItemConfig) error {
+	if config.ID == uuid.Nil {
+		config.ID = uuid.New()
+	}
+
+	query := `
+		INSERT INTO plan_item_configs (
+			id, user_id, label, short_code, behavior, target_tab,
+			color_hex, icon, is_system, sort_order
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+
+	_, err := r.pool.Exec(ctx, query,
+		config.ID, config.UserID, config.Label, config.ShortCode, config.Behavior, config.TargetTab,
+		config.ColorHex, config.Icon, config.IsSystem, config.SortOrder,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create item config: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateItemConfig updates an existing item config
+func (r *PostgresPlanRepository) UpdateItemConfig(ctx context.Context, config *ItemConfig) error {
+	query := `
+		UPDATE plan_item_configs SET
+			label = $2, short_code = $3, behavior = $4, target_tab = $5,
+			color_hex = $6, icon = $7, sort_order = $8, updated_at = NOW()
+		WHERE id = $1 AND is_system = false
+	`
+
+	result, err := r.pool.Exec(ctx, query,
+		config.ID, config.Label, config.ShortCode, config.Behavior, config.TargetTab,
+		config.ColorHex, config.Icon, config.SortOrder,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update item config: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("item config not found or is a system config")
+	}
+
+	return nil
+}
+
+// DeleteItemConfig deletes an item config (only non-system configs)
+func (r *PostgresPlanRepository) DeleteItemConfig(ctx context.Context, configID uuid.UUID) error {
+	query := `DELETE FROM plan_item_configs WHERE id = $1 AND is_system = false`
+
+	result, err := r.pool.Exec(ctx, query, configID)
+	if err != nil {
+		return fmt.Errorf("failed to delete item config: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("item config not found or is a system config")
+	}
+
+	return nil
+}
+
 // marshalLabels converts a map to JSON bytes
 func marshalLabels(labels map[string]string) []byte {
 	if labels == nil {
