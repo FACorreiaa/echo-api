@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -98,6 +99,17 @@ func (s *PlanService) CreatePlan(ctx context.Context, userID uuid.UUID, input *C
 				if item.FieldType == "" {
 					item.FieldType = repository.FieldTypeCurrency
 				}
+				if itemInput.ConfigID != nil {
+					id, err := uuid.Parse(*itemInput.ConfigID)
+					if err == nil {
+						item.ConfigID = &id
+					}
+				}
+				item.ItemType = itemInput.ItemType
+				if itemInput.InitialActualMinor != nil {
+					item.ActualMinor = *itemInput.InitialActualMinor
+				}
+
 				items = append(items, item)
 				itemSortOrder++
 			}
@@ -221,6 +233,127 @@ func (s *PlanService) GetPlanWithDetails(ctx context.Context, userID, planID uui
 	}, nil
 }
 
+// UpdatePlanStructure updates the entire structure of a plan
+func (s *PlanService) UpdatePlanStructure(ctx context.Context, userID, planID uuid.UUID, allowedGroups []CreateCategoryGroupInput) (*repository.UserPlan, error) {
+	// 1. Verify Plan Ownership
+	plan, err := s.GetPlan(ctx, userID, planID)
+	if err != nil || plan == nil {
+		return nil, err
+	}
+
+	// 2. Fetch existing items to preserve actuals (if ID provided)
+	existingItems, err := s.repo.GetItemsByPlan(ctx, planID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch existing items: %w", err)
+	}
+	existingItemsMap := make(map[uuid.UUID]*repository.PlanItem)
+	for _, i := range existingItems {
+		existingItemsMap[i.ID] = i
+	}
+
+	// 3. Flatten structure
+	var groups []*repository.PlanCategoryGroup
+	var categories []*repository.PlanCategory
+	var items []*repository.PlanItem
+
+	sortOrder := 0
+	for _, groupInput := range allowedGroups {
+		groupID := uuid.New()
+		if groupInput.ID != nil {
+			groupID = *groupInput.ID
+		}
+
+		group := &repository.PlanCategoryGroup{
+			ID:            groupID,
+			PlanID:        planID,
+			Name:          groupInput.Name,
+			Color:         groupInput.Color,
+			TargetPercent: groupInput.TargetPercent,
+			SortOrder:     sortOrder,
+			Labels:        marshalLabels(groupInput.Labels),
+		}
+		groups = append(groups, group)
+		sortOrder++
+
+		catSortOrder := 0
+		for _, catInput := range groupInput.Categories {
+			catID := uuid.New()
+			if catInput.ID != nil {
+				catID = *catInput.ID
+			}
+
+			category := &repository.PlanCategory{
+				ID:        catID,
+				PlanID:    planID,
+				GroupID:   &group.ID,
+				Name:      catInput.Name,
+				Icon:      catInput.Icon,
+				SortOrder: catSortOrder,
+				Labels:    marshalLabels(catInput.Labels),
+			}
+			categories = append(categories, category)
+			catSortOrder++
+
+			itemSortOrder := 0
+			for _, itemInput := range catInput.Items {
+				itemID := uuid.New()
+				if itemInput.ID != nil {
+					itemID = *itemInput.ID
+				}
+
+				// Resolve ActualMinor preservation logic
+				actualMinor := int64(0)
+				if itemInput.InitialActualMinor != nil {
+					// Explicit override/init
+					actualMinor = *itemInput.InitialActualMinor
+				} else if existing, ok := existingItemsMap[itemID]; ok {
+					// Preserve existing
+					actualMinor = existing.ActualMinor
+				}
+
+				// Resolve ConfigID
+				var configID *uuid.UUID
+				if itemInput.ConfigID != nil {
+					if id, err := uuid.Parse(*itemInput.ConfigID); err == nil {
+						configID = &id
+					}
+				}
+
+				item := &repository.PlanItem{
+					ID:            itemID,
+					PlanID:        planID,
+					CategoryID:    &category.ID,
+					Name:          itemInput.Name,
+					BudgetedMinor: itemInput.BudgetedMinor,
+					ActualMinor:   actualMinor,
+					WidgetType:    itemInput.WidgetType,
+					FieldType:     itemInput.FieldType,
+					SortOrder:     itemSortOrder,
+					Labels:        marshalLabels(itemInput.Labels),
+					ItemType:      itemInput.ItemType,
+					ConfigID:      configID,
+				}
+				if item.WidgetType == "" {
+					item.WidgetType = repository.WidgetTypeInput
+				}
+				if item.FieldType == "" {
+					item.FieldType = repository.FieldTypeCurrency
+				}
+
+				items = append(items, item)
+				itemSortOrder++
+			}
+		}
+	}
+
+	// 4. Update via Repo
+	if err := s.repo.UpdatePlanStructure(ctx, planID, groups, categories, items); err != nil {
+		return nil, fmt.Errorf("failed to update plan structure: %w", err)
+	}
+
+	return s.repo.GetPlanByID(ctx, planID)
+}
+
 // ComputePlanActualsInput contains the input for computing plan actuals
 type ComputePlanActualsInput struct {
 	StartDate time.Time
@@ -330,6 +463,7 @@ type CreatePlanInput struct {
 
 // CreateCategoryGroupInput contains the data for creating a category group
 type CreateCategoryGroupInput struct {
+	ID            *uuid.UUID
 	Name          string
 	Color         *string
 	TargetPercent float64
@@ -339,6 +473,7 @@ type CreateCategoryGroupInput struct {
 
 // CreateCategoryInput contains the data for creating a category
 type CreateCategoryInput struct {
+	ID     *uuid.UUID
 	Name   string
 	Icon   *string
 	Labels map[string]string
@@ -347,11 +482,15 @@ type CreateCategoryInput struct {
 
 // CreateItemInput contains the data for creating an item
 type CreateItemInput struct {
-	Name          string
-	BudgetedMinor int64
-	WidgetType    repository.WidgetType
-	FieldType     repository.FieldType
-	Labels        map[string]string
+	ID                 *uuid.UUID
+	Name               string
+	BudgetedMinor      int64
+	WidgetType         repository.WidgetType
+	FieldType          repository.FieldType
+	Labels             map[string]string
+	ItemType           repository.ItemType
+	ConfigID           *string
+	InitialActualMinor *int64
 }
 
 // PlanWithDetails contains a plan with all its nested structure

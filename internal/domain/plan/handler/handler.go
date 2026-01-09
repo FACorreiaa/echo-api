@@ -162,6 +162,89 @@ func (h *PlanHandler) ListPlans(ctx context.Context, req *connect.Request[echov1
 	}), nil
 }
 
+// UpdatePlanStructure updates the entire structure of a plan
+func (h *PlanHandler) UpdatePlanStructure(ctx context.Context, req *connect.Request[echov1.UpdatePlanStructureRequest]) (*connect.Response[echov1.UpdatePlanStructureResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not authenticated"))
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	planID, err := uuid.Parse(req.Msg.PlanId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	var groups []service.CreateCategoryGroupInput
+	for _, g := range req.Msg.CategoryGroups {
+		groupInput := service.CreateCategoryGroupInput{
+			Name:          g.Name,
+			TargetPercent: g.TargetPercent,
+			Labels:        g.Labels,
+		}
+		if g.Id != nil {
+			if id, err := uuid.Parse(*g.Id); err == nil {
+				groupInput.ID = &id
+			}
+		}
+		if g.Color != "" {
+			groupInput.Color = &g.Color
+		}
+
+		for _, c := range g.Categories {
+			catInput := service.CreateCategoryInput{
+				Name:   c.Name,
+				Labels: c.Labels,
+			}
+			if c.Id != nil {
+				if id, err := uuid.Parse(*c.Id); err == nil {
+					catInput.ID = &id
+				}
+			}
+			if c.Icon != "" {
+				catInput.Icon = &c.Icon
+			}
+
+			for _, item := range c.Items {
+				itemInput := service.CreateItemInput{
+					Name:               item.Name,
+					BudgetedMinor:      item.BudgetedMinor,
+					WidgetType:         toRepoWidgetType(item.WidgetType),
+					FieldType:          toRepoFieldType(item.FieldType),
+					Labels:             item.Labels,
+					ItemType:           toRepoItemType(item.ItemType),
+					InitialActualMinor: item.InitialActualMinor,
+				}
+				if item.Id != nil {
+					if id, err := uuid.Parse(*item.Id); err == nil {
+						itemInput.ID = &id
+					}
+				}
+				if item.ConfigId != nil {
+					itemInput.ConfigID = item.ConfigId
+				}
+				catInput.Items = append(catInput.Items, itemInput)
+			}
+
+			groupInput.Categories = append(groupInput.Categories, catInput)
+		}
+
+		groups = append(groups, groupInput)
+	}
+
+	plan, err := h.svc.UpdatePlanStructure(ctx, userID, planID, groups)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(&echov1.UpdatePlanStructureResponse{
+		Plan: toProtoPlan(plan),
+	}), nil
+}
+
 // UpdatePlan updates an existing plan
 func (h *PlanHandler) UpdatePlan(ctx context.Context, req *connect.Request[echov1.UpdatePlanRequest]) (*connect.Response[echov1.UpdatePlanResponse], error) {
 	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
@@ -747,6 +830,35 @@ func toRepoTargetTab(t echov1.TargetTab) repository.TargetTab {
 	switch t {
 	case echov1.TargetTab_TARGET_TAB_BUDGETS:
 		return repository.TargetTabBudgets
+	case echov1.TargetTab_TARGET_TAB_RECURRING:
+		return repository.TargetTabRecurring
+	case echov1.TargetTab_TARGET_TAB_GOALS:
+		return repository.TargetTabGoals
+	case echov1.TargetTab_TARGET_TAB_INCOME:
+		return repository.TargetTabIncome
+	case echov1.TargetTab_TARGET_TAB_PORTFOLIO:
+		return repository.TargetTabPortfolio
+	case echov1.TargetTab_TARGET_TAB_LIABILITIES:
+		return repository.TargetTabLiabilities
+	default:
+		return repository.TargetTabBudgets // Default fallback
+	}
+}
+
+func toRepoItemType(t echov1.ItemType) repository.ItemType {
+	switch t {
+	case echov1.ItemType_ITEM_TYPE_BUDGET:
+		return repository.ItemTypeBudget
+	case echov1.ItemType_ITEM_TYPE_RECURRING:
+		return repository.ItemTypeRecurring
+	case echov1.ItemType_ITEM_TYPE_GOAL:
+		return repository.ItemTypeGoal
+	case echov1.ItemType_ITEM_TYPE_INCOME:
+		return repository.ItemTypeIncome
+	default:
+		return repository.ItemTypeBudget // Default
+	}
+}
 	case echov1.TargetTab_TARGET_TAB_RECURRING:
 		return repository.TargetTabRecurring
 	case echov1.TargetTab_TARGET_TAB_GOALS:

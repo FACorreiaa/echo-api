@@ -362,14 +362,14 @@ func (r *PostgresPlanRepository) CreateItem(ctx context.Context, item *PlanItem)
 		INSERT INTO plan_items (
 			id, plan_id, category_id, name, budgeted_minor, actual_minor,
 			excel_cell, formula, widget_type, field_type, sort_order,
-			min_value, max_value, labels
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			min_value, max_value, labels, item_type, config_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 	`
 
 	_, err := r.pool.Exec(ctx, query,
 		item.ID, item.PlanID, item.CategoryID, item.Name, item.BudgetedMinor, item.ActualMinor,
 		item.ExcelCell, item.Formula, item.WidgetType, item.FieldType, item.SortOrder,
-		item.MinValue, item.MaxValue, item.Labels,
+		item.MinValue, item.MaxValue, item.Labels, item.ItemType, item.ConfigID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create item: %w", err)
@@ -383,7 +383,7 @@ func (r *PostgresPlanRepository) GetItemsByPlan(ctx context.Context, planID uuid
 	query := `
 		SELECT id, plan_id, category_id, name, budgeted_minor, actual_minor,
 		       excel_cell, formula, widget_type, field_type, sort_order,
-		       min_value, max_value, labels, created_at, updated_at
+		       min_value, max_value, labels, item_type, config_id, created_at, updated_at
 		FROM plan_items
 		WHERE plan_id = $1
 		ORDER BY sort_order
@@ -401,7 +401,7 @@ func (r *PostgresPlanRepository) GetItemsByPlan(ctx context.Context, planID uuid
 		if err := rows.Scan(
 			&i.ID, &i.PlanID, &i.CategoryID, &i.Name, &i.BudgetedMinor, &i.ActualMinor,
 			&i.ExcelCell, &i.Formula, &i.WidgetType, &i.FieldType, &i.SortOrder,
-			&i.MinValue, &i.MaxValue, &i.Labels, &i.CreatedAt, &i.UpdatedAt,
+			&i.MinValue, &i.MaxValue, &i.Labels, &i.ItemType, &i.ConfigID, &i.CreatedAt, &i.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan item: %w", err)
 		}
@@ -449,13 +449,13 @@ func (r *PostgresPlanRepository) UpdateItem(ctx context.Context, item *PlanItem)
 	query := `
 		UPDATE plan_items SET
 			name = $2, budgeted_minor = $3, actual_minor = $4,
-			widget_type = $5, field_type = $6, labels = $7
+			widget_type = $5, field_type = $6, labels = $7, item_type = $8, config_id = $9
 		WHERE id = $1
 	`
 
 	_, err := r.pool.Exec(ctx, query,
 		item.ID, item.Name, item.BudgetedMinor, item.ActualMinor,
-		item.WidgetType, item.FieldType, item.Labels,
+		item.WidgetType, item.FieldType, item.Labels, item.ItemType, item.ConfigID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update item: %w", err)
@@ -554,15 +554,251 @@ func (r *PostgresPlanRepository) CreatePlanWithStructure(ctx context.Context, pl
 			INSERT INTO plan_items (
 				id, plan_id, category_id, name, budgeted_minor, actual_minor,
 				excel_cell, formula, widget_type, field_type, sort_order,
-				min_value, max_value, labels
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+				min_value, max_value, labels, item_type, config_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		`,
 			i.ID, i.PlanID, i.CategoryID, i.Name, i.BudgetedMinor, i.ActualMinor,
 			i.ExcelCell, i.Formula, i.WidgetType, i.FieldType, i.SortOrder,
-			i.MinValue, i.MaxValue, i.Labels,
+			i.MinValue, i.MaxValue, i.Labels, i.ItemType, i.ConfigID,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create item: %w", err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+// UpdatePlanStructure updates the entire structure of a plan
+func (r *PostgresPlanRepository) UpdatePlanStructure(ctx context.Context, planID uuid.UUID, groups []*PlanCategoryGroup, categories []*PlanCategory, items []*PlanItem) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// verify plan ownership/existence? Handled by service layer usually, but good to be safe by respecting planID in queries
+
+	// 1. Groups
+	// Get existing IDs
+	existingGroupIDs := make(map[uuid.UUID]bool)
+	rows, err := tx.Query(ctx, "SELECT id FROM plan_category_groups WHERE plan_id = $1", planID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch existing groups: %w", err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err == nil {
+			existingGroupIDs[id] = true
+		}
+	}
+	rows.Close()
+
+	processedGroupIDs := make(map[uuid.UUID]bool)
+
+	for _, g := range groups {
+		if g.ID != uuid.Nil {
+			// Update existing
+			_, err := tx.Exec(ctx, `
+				UPDATE plan_category_groups SET name = $2, color = $3, target_percent = $4, sort_order = $5, labels = $6
+				WHERE id = $1 AND plan_id = $7
+			`, g.ID, g.Name, g.Color, g.TargetPercent, g.SortOrder, g.Labels, planID)
+			if err != nil {
+				return fmt.Errorf("failed to update group %s: %w", g.ID, err)
+			}
+			processedGroupIDs[g.ID] = true
+		} else {
+			// Insert new
+			g.ID = uuid.New() // Ensure ID is generated
+			g.PlanID = planID
+			_, err := tx.Exec(ctx, `
+				INSERT INTO plan_category_groups (id, plan_id, name, color, target_percent, sort_order, labels)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, g.ID, g.PlanID, g.Name, g.Color, g.TargetPercent, g.SortOrder, g.Labels)
+			if err != nil {
+				return fmt.Errorf("failed to insert group: %w", err)
+			}
+		}
+	}
+
+	// Delete unmatched groups
+	for id := range existingGroupIDs {
+		if !processedGroupIDs[id] {
+			if _, err := tx.Exec(ctx, "DELETE FROM plan_category_groups WHERE id = $1", id); err != nil {
+				return fmt.Errorf("failed to delete group %s: %w", id, err)
+			}
+		}
+	}
+
+	// 2. Categories
+	// We need to map which group a category belongs to properly.
+	// The `categories` slice must have correct `GroupID`.
+	// Since we might have generated new GroupIDs above, the service layer (or caller) must have linked them?
+	// PROBLEM: If we generated a NEW Group ID above, the `categories` slice passed in likely has `uuid.Nil` for GroupID or a temp ID?
+	// Solution: The caller (service) should restructure this.
+	// Actually, the Service logic is better place to handle the ID mapping if we are traversing a tree.
+	// BUT, keeping it here in one Tx is better.
+	// Let's assume the caller passes `categories` where `GroupID` is already set correctly.
+	// For NEW groups, the caller doesn't know the ID yet?
+	// Ah, simpler: The `groups` slice `g` object was updated with `g.ID = uuid.New()`.
+	// If the caller has references to these objects, they can see the IDs.
+	// But `categories` is a separate flat slice.
+	// We need to process categories *after* we know all Group IDs.
+	// IF the input `categories` are linked to the *objects* in `groups`, updates reflect.
+	// But here we are passing slices of pointers.
+	// Recommendation: The simpler way is to handle the tree traversal logic here or expect the caller to do a 2-pass?
+	// Let's assume the caller will call this method with valid GroupIDs.
+	// Wait, that's impossible for new groups unless we return the new IDs.
+	// BETTER APPROACH for Repo: `UpdatePlanStructure` takes nested objects? No, repo structs are flat.
+	// Let's defer "New Group w/ New Categories" logic constraint for a moment.
+	// If the user adds a New Group via UI, the UI sends it without ID.
+	// The Service receives it. Service iterates groups.
+	// Use `CreatePlanWithStructure` style?
+	// In `UpdatePlanStructure`, we can't easily link new categories to new groups if they are flat lists.
+
+	// Refined Plan: The repository method should iterate the `groups` and for each group, handle its categories?
+	// But the signature is `groups []*PlanCategoryGroup, categories []*PlanCategory`.
+	// I should change the signature to accept a hierarchical structure or manage the mapping logic.
+	// Or, simpler:
+	// Use the logic I just wrote for Groups.
+	// But for Categories, I need to know their GroupID.
+	// If `categories` passed in have `GroupID` set, we are good.
+	// BUT for a NEW Group, the `GroupID` is not known until `uuid.New()` is called above.
+	// Unless... we generate UUIDs in the Service layer before calling Repo?
+	// YES. The Service should generate IDs for all new entities.
+	// That way, `GroupID` is already set in `categories` list.
+	// Repository just upserts.
+
+	// So, proceeding with the assumption that ALL IDs (even for new items) are pre-generated by the Service.
+
+	// Get existing Categories
+	existingCatIDs := make(map[uuid.UUID]bool)
+	rowsC, err := tx.Query(ctx, "SELECT id FROM plan_categories WHERE plan_id = $1", planID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch existing categories: %w", err)
+	}
+	for rowsC.Next() {
+		var id uuid.UUID
+		if err := rowsC.Scan(&id); err == nil {
+			existingCatIDs[id] = true
+		}
+	}
+	rowsC.Close()
+
+	processedCatIDs := make(map[uuid.UUID]bool)
+	for _, c := range categories {
+		if c.ID == uuid.Nil {
+			return fmt.Errorf("category missing ID (should be pre-generated)")
+		}
+
+		if existingCatIDs[c.ID] {
+			// Update
+			_, err := tx.Exec(ctx, `
+				UPDATE plan_categories SET group_id = $2, name = $3, icon = $4, color = $5, sort_order = $6, labels = $7
+				WHERE id = $1 AND plan_id = $8
+			`, c.ID, c.GroupID, c.Name, c.Icon, c.Color, c.SortOrder, c.Labels, planID)
+			if err != nil {
+				return fmt.Errorf("failed to update category %s: %w", c.ID, err)
+			}
+			processedCatIDs[c.ID] = true
+		} else {
+			// Insert
+			c.PlanID = planID
+			_, err := tx.Exec(ctx, `
+				INSERT INTO plan_categories (id, plan_id, group_id, name, icon, color, sort_order, labels)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			`, c.ID, c.PlanID, c.GroupID, c.Name, c.Icon, c.Color, c.SortOrder, c.Labels)
+			if err != nil {
+				return fmt.Errorf("failed to insert category: %w", err)
+			}
+		}
+	}
+
+	// Delete unmatched categories
+	for id := range existingCatIDs {
+		if !processedCatIDs[id] {
+			if _, err := tx.Exec(ctx, "DELETE FROM plan_categories WHERE id = $1", id); err != nil {
+				return fmt.Errorf("failed to delete category %s: %w", id, err)
+			}
+		}
+	}
+
+	// 3. Items
+	// Get existing Items
+	existingItemIDs := make(map[uuid.UUID]bool)
+	rowsI, err := tx.Query(ctx, "SELECT id FROM plan_items WHERE plan_id = $1", planID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch existing items: %w", err)
+	}
+	for rowsI.Next() {
+		var id uuid.UUID
+		if err := rowsI.Scan(&id); err == nil {
+			existingItemIDs[id] = true
+		}
+	}
+	rowsI.Close()
+
+	processedItemIDs := make(map[uuid.UUID]bool)
+	for _, i := range items {
+		if i.ID == uuid.Nil {
+			return fmt.Errorf("item missing ID (should be pre-generated)")
+		}
+
+		if existingItemIDs[i.ID] {
+			// Update
+			// Note: We update `actual_minor` only if it's non-zero/provided? Or overwrite?
+			// We should probably preserve it unless explicitly changing.
+			// But the repository receives the desired final state.
+			// If the service doesn't populate `ActualMinor` with the DB value, we might zero it out!
+			// CRITICAL: The service must ensure `ActualMinor` is correct (fetch & preserve or update).
+			// Alternatively, logic: if `i.ActualMinor` is 0, don't update it? No, that prevents setting to 0.
+			// Let's assume Service handles data merging. Repository just writes what matches input.
+
+			// Wait, the input logic discussed earlier: "Update actual if initial_actual provided, else keep".
+			// Use COALESCE logic in SQL or handle in Go?
+			// Simplest: Service layer decides the value. Repo writes it.
+
+			_, err := tx.Exec(ctx, `
+				UPDATE plan_items SET 
+					category_id = $2, name = $3, budgeted_minor = $4, actual_minor = $5,
+					excel_cell = $6, formula = $7, widget_type = $8, field_type = $9, sort_order = $10,
+					min_value = $11, max_value = $12, labels = $13, item_type = $14, config_id = $15
+				WHERE id = $1 AND plan_id = $16
+			`,
+				i.ID, i.CategoryID, i.Name, i.BudgetedMinor, i.ActualMinor,
+				i.ExcelCell, i.Formula, i.WidgetType, i.FieldType, i.SortOrder,
+				i.MinValue, i.MaxValue, i.Labels, i.ItemType, i.ConfigID, planID,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to update item %s: %w", i.ID, err)
+			}
+			processedItemIDs[i.ID] = true
+		} else {
+			// Insert
+			i.PlanID = planID
+			_, err := tx.Exec(ctx, `
+				INSERT INTO plan_items (
+					id, plan_id, category_id, name, budgeted_minor, actual_minor,
+					excel_cell, formula, widget_type, field_type, sort_order,
+					min_value, max_value, labels, item_type, config_id
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			`,
+				i.ID, i.PlanID, i.CategoryID, i.Name, i.BudgetedMinor, i.ActualMinor,
+				i.ExcelCell, i.Formula, i.WidgetType, i.FieldType, i.SortOrder,
+				i.MinValue, i.MaxValue, i.Labels, i.ItemType, i.ConfigID,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to insert item: %w", err)
+			}
+		}
+	}
+
+	// Delete unmatched items
+	for id := range existingItemIDs {
+		if !processedItemIDs[id] {
+			if _, err := tx.Exec(ctx, "DELETE FROM plan_items WHERE id = $1", id); err != nil {
+				return fmt.Errorf("failed to delete item %s: %w", id, err)
+			}
 		}
 	}
 

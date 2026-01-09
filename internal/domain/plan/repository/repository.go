@@ -98,6 +98,16 @@ type PlanCategoryGroup struct {
 	CreatedAt     time.Time `db:"created_at"`
 }
 
+// ItemType represents the type of a plan item (Budget, Recurring, Goal, Income)
+type ItemType string
+
+const (
+	ItemTypeBudget    ItemType = "budget"
+	ItemTypeRecurring ItemType = "recurring"
+	ItemTypeGoal      ItemType = "goal"
+	ItemTypeIncome    ItemType = "income"
+)
+
 // PlanCategory represents a category within a plan
 type PlanCategory struct {
 	ID        uuid.UUID  `db:"id"`
@@ -127,6 +137,7 @@ type PlanItem struct {
 	MinValue      *int64     `db:"min_value"`
 	MaxValue      *int64     `db:"max_value"`
 	Labels        []byte     `db:"labels"`    // JSONB
+	ItemType      ItemType   `db:"item_type"` // Legacy/Simple typing
 	ConfigID      *uuid.UUID `db:"config_id"` // Link to dynamic item config
 	CreatedAt     time.Time  `db:"created_at"`
 	UpdatedAt     time.Time  `db:"updated_at"`
@@ -158,6 +169,9 @@ type PlanRepository interface {
 	UpdatePlan(ctx context.Context, plan *UserPlan) error
 	DeletePlan(ctx context.Context, planID uuid.UUID) error
 	SetActivePlan(ctx context.Context, userID, planID uuid.UUID) error
+
+	// UpdatePlanStructure updates the entire structure of a plan
+	UpdatePlanStructure(ctx context.Context, planID uuid.UUID, groups []*PlanCategoryGroup, categories []*PlanCategory, items []*PlanItem) error
 
 	// Category Groups
 	CreateCategoryGroup(ctx context.Context, group *PlanCategoryGroup) error
