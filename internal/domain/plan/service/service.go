@@ -403,6 +403,35 @@ type ExcelImportResult struct {
 	ItemsImported      int
 }
 
+// ============================================================================
+// Item Config Methods
+// ============================================================================
+
+// ListItemConfigs retrieves all item configs for a user
+func (s *PlanService) ListItemConfigs(ctx context.Context, userID uuid.UUID) ([]*repository.ItemConfig, error) {
+	return s.repo.ListItemConfigs(ctx, userID)
+}
+
+// GetItemConfigByID retrieves a specific item config
+func (s *PlanService) GetItemConfigByID(ctx context.Context, configID uuid.UUID) (*repository.ItemConfig, error) {
+	return s.repo.GetItemConfigByID(ctx, configID)
+}
+
+// CreateItemConfig creates a new item config
+func (s *PlanService) CreateItemConfig(ctx context.Context, config *repository.ItemConfig) error {
+	return s.repo.CreateItemConfig(ctx, config)
+}
+
+// UpdateItemConfig updates an existing item config
+func (s *PlanService) UpdateItemConfig(ctx context.Context, config *repository.ItemConfig) error {
+	return s.repo.UpdateItemConfig(ctx, config)
+}
+
+// DeleteItemConfig deletes an item config
+func (s *PlanService) DeleteItemConfig(ctx context.Context, configID uuid.UUID) error {
+	return s.repo.DeleteItemConfig(ctx, configID)
+}
+
 // marshalLabels converts a map to JSON bytes
 func marshalLabels(labels map[string]string) []byte {
 	if labels == nil {

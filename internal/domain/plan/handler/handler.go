@@ -621,3 +621,124 @@ func toRepoFieldType(f echov1.FieldType) repository.FieldType {
 		return repository.FieldTypeCurrency
 	}
 }
+
+// ============================================================================
+// Budget Period Methods (stub implementations - use BudgetPeriodHandler for full impl)
+// ============================================================================
+
+// GetBudgetPeriod gets or creates a budget period for a specific month
+func (h *PlanHandler) GetBudgetPeriod(ctx context.Context, req *connect.Request[echov1.GetBudgetPeriodRequest]) (*connect.Response[echov1.GetBudgetPeriodResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("use BudgetPeriodHandler"))
+}
+
+// ListBudgetPeriods lists all periods for a plan
+func (h *PlanHandler) ListBudgetPeriods(ctx context.Context, req *connect.Request[echov1.ListBudgetPeriodsRequest]) (*connect.Response[echov1.ListBudgetPeriodsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("use BudgetPeriodHandler"))
+}
+
+// UpdateBudgetPeriodItem updates a specific item's values
+func (h *PlanHandler) UpdateBudgetPeriodItem(ctx context.Context, req *connect.Request[echov1.UpdateBudgetPeriodItemRequest]) (*connect.Response[echov1.UpdateBudgetPeriodItemResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("use BudgetPeriodHandler"))
+}
+
+// CopyBudgetPeriod copies values from one period to another
+func (h *PlanHandler) CopyBudgetPeriod(ctx context.Context, req *connect.Request[echov1.CopyBudgetPeriodRequest]) (*connect.Response[echov1.CopyBudgetPeriodResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("use BudgetPeriodHandler"))
+}
+
+// ============================================================================
+// Item Config Methods
+// ============================================================================
+
+// ListItemConfigs returns all item configs for the current user
+func (h *PlanHandler) ListItemConfigs(ctx context.Context, req *connect.Request[echov1.ListItemConfigsRequest]) (*connect.Response[echov1.ListItemConfigsResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not authenticated"))
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	configs, err := h.svc.ListItemConfigs(ctx, userID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	var protoConfigs []*echov1.ItemConfig
+	for _, c := range configs {
+		protoConfigs = append(protoConfigs, toProtoItemConfig(c))
+	}
+
+	return connect.NewResponse(&echov1.ListItemConfigsResponse{
+		Configs: protoConfigs,
+	}), nil
+}
+
+// CreateItemConfig creates a new custom item type
+func (h *PlanHandler) CreateItemConfig(ctx context.Context, req *connect.Request[echov1.CreateItemConfigRequest]) (*connect.Response[echov1.CreateItemConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+}
+
+// UpdateItemConfig updates an existing item config
+func (h *PlanHandler) UpdateItemConfig(ctx context.Context, req *connect.Request[echov1.UpdateItemConfigRequest]) (*connect.Response[echov1.UpdateItemConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+}
+
+// DeleteItemConfig deletes a custom item config
+func (h *PlanHandler) DeleteItemConfig(ctx context.Context, req *connect.Request[echov1.DeleteItemConfigRequest]) (*connect.Response[echov1.DeleteItemConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
+}
+
+// toProtoItemConfig converts repository ItemConfig to proto
+func toProtoItemConfig(c *repository.ItemConfig) *echov1.ItemConfig {
+	if c == nil {
+		return nil
+	}
+	return &echov1.ItemConfig{
+		Id:        c.ID.String(),
+		Label:     c.Label,
+		ShortCode: c.ShortCode,
+		Behavior:  toProtoItemBehavior(c.Behavior),
+		TargetTab: toProtoTargetTab(c.TargetTab),
+		ColorHex:  c.ColorHex,
+		Icon:      c.Icon,
+		SortOrder: int32(c.SortOrder),
+		IsSystem:  c.IsSystem,
+	}
+}
+
+func toProtoItemBehavior(b repository.ItemBehavior) echov1.ItemBehavior {
+	switch b {
+	case repository.ItemBehaviorOutflow:
+		return echov1.ItemBehavior_ITEM_BEHAVIOR_OUTFLOW
+	case repository.ItemBehaviorInflow:
+		return echov1.ItemBehavior_ITEM_BEHAVIOR_INFLOW
+	case repository.ItemBehaviorAsset:
+		return echov1.ItemBehavior_ITEM_BEHAVIOR_ASSET
+	case repository.ItemBehaviorLiability:
+		return echov1.ItemBehavior_ITEM_BEHAVIOR_LIABILITY
+	default:
+		return echov1.ItemBehavior_ITEM_BEHAVIOR_UNSPECIFIED
+	}
+}
+
+func toProtoTargetTab(t repository.TargetTab) echov1.TargetTab {
+	switch t {
+	case repository.TargetTabBudgets:
+		return echov1.TargetTab_TARGET_TAB_BUDGETS
+	case repository.TargetTabRecurring:
+		return echov1.TargetTab_TARGET_TAB_RECURRING
+	case repository.TargetTabGoals:
+		return echov1.TargetTab_TARGET_TAB_GOALS
+	case repository.TargetTabIncome:
+		return echov1.TargetTab_TARGET_TAB_INCOME
+	case repository.TargetTabPortfolio:
+		return echov1.TargetTab_TARGET_TAB_PORTFOLIO
+	case repository.TargetTabLiabilities:
+		return echov1.TargetTab_TARGET_TAB_LIABILITIES
+	default:
+		return echov1.TargetTab_TARGET_TAB_UNSPECIFIED
+	}
+}
