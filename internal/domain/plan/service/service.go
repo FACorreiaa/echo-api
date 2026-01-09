@@ -432,6 +432,26 @@ func (s *PlanService) DeleteItemConfig(ctx context.Context, configID uuid.UUID) 
 	return s.repo.DeleteItemConfig(ctx, configID)
 }
 
+// ItemsByTabResult represents the result of GetItemsByTab
+type ItemsByTabResult struct {
+	Items         []repository.PlanItemWithConfig
+	TotalBudgeted int64
+	TotalActual   int64
+}
+
+// GetItemsByTab returns items for a plan filtered by target tab
+func (s *PlanService) GetItemsByTab(ctx context.Context, planID uuid.UUID, targetTab repository.TargetTab) (*ItemsByTabResult, error) {
+	items, totalBudgeted, totalActual, err := s.repo.GetItemsByTabWithTotals(ctx, planID, targetTab)
+	if err != nil {
+		return nil, err
+	}
+	return &ItemsByTabResult{
+		Items:         items,
+		TotalBudgeted: totalBudgeted,
+		TotalActual:   totalActual,
+	}, nil
+}
+
 // marshalLabels converts a map to JSON bytes
 func marshalLabels(labels map[string]string) []byte {
 	if labels == nil {

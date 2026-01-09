@@ -742,3 +742,90 @@ func toProtoTargetTab(t repository.TargetTab) echov1.TargetTab {
 		return echov1.TargetTab_TARGET_TAB_UNSPECIFIED
 	}
 }
+
+func toRepoTargetTab(t echov1.TargetTab) repository.TargetTab {
+	switch t {
+	case echov1.TargetTab_TARGET_TAB_BUDGETS:
+		return repository.TargetTabBudgets
+	case echov1.TargetTab_TARGET_TAB_RECURRING:
+		return repository.TargetTabRecurring
+	case echov1.TargetTab_TARGET_TAB_GOALS:
+		return repository.TargetTabGoals
+	case echov1.TargetTab_TARGET_TAB_INCOME:
+		return repository.TargetTabIncome
+	case echov1.TargetTab_TARGET_TAB_PORTFOLIO:
+		return repository.TargetTabPortfolio
+	case echov1.TargetTab_TARGET_TAB_LIABILITIES:
+		return repository.TargetTabLiabilities
+	default:
+		return repository.TargetTabBudgets // Default to budgets
+	}
+}
+
+// ============================================================================
+// GetPlanItemsByTab - Filtered item queries for tabs
+// ============================================================================
+
+// GetPlanItemsByTab returns items filtered by target tab
+func (h *PlanHandler) GetPlanItemsByTab(ctx context.Context, req *connect.Request[echov1.GetPlanItemsByTabRequest]) (*connect.Response[echov1.GetPlanItemsByTabResponse], error) {
+	_, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not authenticated"))
+	}
+
+	planID, err := uuid.Parse(req.Msg.PlanId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid plan ID"))
+	}
+
+	targetTab := toRepoTargetTab(req.Msg.TargetTab)
+
+	result, err := h.svc.GetItemsByTab(ctx, planID, targetTab)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	var protoItems []*echov1.PlanItemWithConfig
+	for _, item := range result.Items {
+		protoItems = append(protoItems, toProtoPlanItemWithConfig(&item))
+	}
+
+	return connect.NewResponse(&echov1.GetPlanItemsByTabResponse{
+		Items:         protoItems,
+		TotalBudgeted: &echov1.Money{AmountMinor: result.TotalBudgeted, CurrencyCode: "EUR"},
+		TotalActual:   &echov1.Money{AmountMinor: result.TotalActual, CurrencyCode: "EUR"},
+	}), nil
+}
+
+func toProtoPlanItemWithConfig(item *repository.PlanItemWithConfig) *echov1.PlanItemWithConfig {
+	result := &echov1.PlanItemWithConfig{
+		Id:       item.ID.String(),
+		Name:     item.Name,
+		Budgeted: &echov1.Money{AmountMinor: item.BudgetedMinor, CurrencyCode: "EUR"},
+		Actual:   &echov1.Money{AmountMinor: item.ActualMinor, CurrencyCode: "EUR"},
+	}
+
+	if item.CategoryName != nil {
+		result.CategoryName = *item.CategoryName
+	}
+	if item.GroupName != nil {
+		result.GroupName = *item.GroupName
+	}
+	if item.ConfigID != nil {
+		result.ConfigId = item.ConfigID.String()
+	}
+	if item.ConfigLabel != nil {
+		result.ConfigLabel = *item.ConfigLabel
+	}
+	if item.ConfigShortCode != nil {
+		result.ConfigShortCode = *item.ConfigShortCode
+	}
+	if item.ConfigColorHex != nil {
+		result.ConfigColorHex = *item.ConfigColorHex
+	}
+	if item.Behavior != nil {
+		result.Behavior = toProtoItemBehavior(*item.Behavior)
+	}
+
+	return result
+}

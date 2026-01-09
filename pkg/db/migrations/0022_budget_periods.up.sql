@@ -1,3 +1,4 @@
+-- +goose Up
 -- Migration: 0022_budget_periods
 -- Purpose: Add monthly budget versioning with period-specific values and history tracking
 
@@ -70,10 +71,10 @@ CREATE INDEX idx_budget_history_changed_at ON budget_history (changed_at);
 -- Trigger: Auto-create budget period items when period is created
 -- ============================================================================
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION create_period_items_from_plan()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Copy all items from the plan to this period
   INSERT INTO budget_period_items (period_id, item_id, budgeted_minor, actual_minor)
   SELECT 
     NEW.id,
@@ -88,6 +89,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER trg_create_period_items
   AFTER INSERT ON budget_periods
@@ -98,6 +100,7 @@ CREATE TRIGGER trg_create_period_items
 -- Trigger: Track budget changes in history
 -- ============================================================================
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION track_budget_changes()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -120,6 +123,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER trg_track_budget_history
   AFTER UPDATE ON budget_period_items
@@ -133,9 +137,9 @@ CREATE TRIGGER trg_track_budget_history
 CREATE TRIGGER trg_budget_periods_updated
   BEFORE UPDATE ON budget_periods
   FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at();
+  EXECUTE FUNCTION update_plan_updated_at();
 
 CREATE TRIGGER trg_budget_period_items_updated
   BEFORE UPDATE ON budget_period_items
   FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at();
+  EXECUTE FUNCTION update_plan_updated_at();

@@ -186,6 +186,9 @@ type PlanRepository interface {
 	CreateItemConfig(ctx context.Context, config *ItemConfig) error
 	UpdateItemConfig(ctx context.Context, config *ItemConfig) error
 	DeleteItemConfig(ctx context.Context, configID uuid.UUID) error
+
+	// Filtered queries
+	GetItemsByTabWithTotals(ctx context.Context, planID uuid.UUID, targetTab TargetTab) ([]PlanItemWithConfig, int64, int64, error)
 }
 
 // CreatePlanInput is used for creating a new plan with its full structure
