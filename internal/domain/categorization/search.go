@@ -16,13 +16,13 @@ import (
 // SearchDocument represents a searchable merchant/rule document
 type SearchDocument struct {
 	ID          string  `json:"id"`
-	Pattern     string  `json:"pattern"`      // Original pattern (for exact matching)
-	CleanName   string  `json:"clean_name"`   // Clean display name
-	Description string  `json:"description"`  // Full text description for search
-	CategoryID  string  `json:"category_id"`  // Category UUID as string
-	Type        string  `json:"type"`         // "rule" or "merchant"
-	Priority    float64 `json:"priority"`     // For boosting results
-	UserID      string  `json:"user_id"`      // Owner user ID (empty for system)
+	Pattern     string  `json:"pattern"`     // Original pattern (for exact matching)
+	CleanName   string  `json:"clean_name"`  // Clean display name
+	Description string  `json:"description"` // Full text description for search
+	CategoryID  string  `json:"category_id"` // Category UUID as string
+	Type        string  `json:"type"`        // "rule" or "merchant"
+	Priority    float64 `json:"priority"`    // For boosting results
+	UserID      string  `json:"user_id"`     // Owner user ID (empty for system)
 }
 
 // SearchResult represents a search hit with relevance score
@@ -59,7 +59,7 @@ func NewSearchIndex(path string) (*SearchIndex, error) {
 		// Check if index exists
 		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 			// Create new index
-			if mkdirErr := os.MkdirAll(filepath.Dir(path), 0755); mkdirErr != nil {
+			if mkdirErr := os.MkdirAll(filepath.Dir(path), 0o755); mkdirErr != nil {
 				return nil, fmt.Errorf("failed to create index directory: %w", mkdirErr)
 			}
 			index, err = bleve.New(path, indexMapping)

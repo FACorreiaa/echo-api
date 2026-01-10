@@ -275,8 +275,8 @@ func TestTax(t *testing.T) {
 	tax := base.Tax(8.25)
 	withTax := base.WithTax(8.25)
 
-	assert.Equal(t, int64(825), tax.Amount())          // $8.25 tax
-	assert.Equal(t, int64(10825), withTax.Amount())    // $108.25 total
+	assert.Equal(t, int64(825), tax.Amount())       // $8.25 tax
+	assert.Equal(t, int64(10825), withTax.Amount()) // $108.25 total
 
 	// Extract tax from tax-inclusive amount
 	extractedTax := withTax.ExtractTax(8.25)
@@ -366,7 +366,7 @@ func TestMargin(t *testing.T) {
 }
 
 func TestPercentageOf(t *testing.T) {
-	part := New(2500, USD)  // $25
+	part := New(2500, USD)   // $25
 	whole := New(10000, USD) // $100
 
 	pct := part.PercentageOf(whole)
@@ -387,7 +387,7 @@ func TestRound(t *testing.T) {
 		{"round up", 123, 5, 125},   // 123 is 3 away from 125, 2 from 120 -> round up
 		{"round down", 121, 5, 120}, // 121 is 4 away from 125, 1 from 120 -> round down
 		{"exact", 125, 5, 125},
-		{"round to 10", 1234, 10, 1230}, // 1234 is 4 away from 1230 -> round down
+		{"round to 10", 1234, 10, 1230},   // 1234 is 4 away from 1230 -> round down
 		{"round to 100", 1250, 100, 1300}, // 1250 is exactly halfway -> round up
 	}
 

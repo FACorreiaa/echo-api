@@ -177,10 +177,10 @@ func TestLevenshteinDistance(t *testing.T) {
 		{"abc", "", 3},
 		{"", "abc", 3},
 		{"abc", "abc", 0},
-		{"abc", "abd", 1},         // substitution
-		{"abc", "abcd", 1},        // insertion
-		{"abcd", "abc", 1},        // deletion
-		{"kitten", "sitting", 3},  // classic example
+		{"abc", "abd", 1},        // substitution
+		{"abc", "abcd", 1},       // insertion
+		{"abcd", "abc", 1},       // deletion
+		{"kitten", "sitting", 3}, // classic example
 		{"STARBUCKS", "STARBACKS", 1},
 	}
 

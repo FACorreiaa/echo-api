@@ -62,9 +62,9 @@ func BenchmarkParserComparison(b *testing.B) {
 
 		b.Run(fmt.Sprintf("NewParser_%d_rows", size), func(b *testing.B) {
 			config := ParserConfig{
-				DateColumn:   0,
-				DescColumn:   1,
-				AmountColumn: 2,
+				DateColumn:     0,
+				DescColumn:     1,
+				AmountColumn:   2,
 				CategoryColumn: 3,
 			}
 			parser := NewParser(config)
@@ -78,9 +78,9 @@ func BenchmarkParserComparison(b *testing.B) {
 
 		b.Run(fmt.Sprintf("StreamingParser_%d_rows", size), func(b *testing.B) {
 			config := ParserConfig{
-				DateColumn:   0,
-				DescColumn:   1,
-				AmountColumn: 2,
+				DateColumn:     0,
+				DescColumn:     1,
+				AmountColumn:   2,
 				CategoryColumn: 3,
 			}
 			b.SetBytes(int64(len(csvData)))
@@ -99,9 +99,9 @@ func BenchmarkParserComparison(b *testing.B) {
 
 		b.Run(fmt.Sprintf("StreamingParserBatched_%d_rows", size), func(b *testing.B) {
 			config := ParserConfig{
-				DateColumn:   0,
-				DescColumn:   1,
-				AmountColumn: 2,
+				DateColumn:     0,
+				DescColumn:     1,
+				AmountColumn:   2,
 				CategoryColumn: 3,
 			}
 			b.SetBytes(int64(len(csvData)))
@@ -128,9 +128,9 @@ func BenchmarkParserMemory(b *testing.B) {
 
 	b.Run("NewParser_Memory", func(b *testing.B) {
 		config := ParserConfig{
-			DateColumn:   0,
-			DescColumn:   1,
-			AmountColumn: 2,
+			DateColumn:     0,
+			DescColumn:     1,
+			AmountColumn:   2,
 			CategoryColumn: 3,
 		}
 		parser := NewParser(config)
@@ -146,9 +146,9 @@ func BenchmarkParserMemory(b *testing.B) {
 
 	b.Run("StreamingParser_Memory", func(b *testing.B) {
 		config := ParserConfig{
-			DateColumn:   0,
-			DescColumn:   1,
-			AmountColumn: 2,
+			DateColumn:     0,
+			DescColumn:     1,
+			AmountColumn:   2,
 			CategoryColumn: 3,
 		}
 
@@ -267,9 +267,9 @@ func BenchmarkDebitCreditParsing(b *testing.B) {
 	csvData := buf.Bytes()
 
 	config := ParserConfig{
-		DateColumn:  0,
-		DescColumn:  1,
-		DebitColumn: 2,
+		DateColumn:   0,
+		DescColumn:   1,
+		DebitColumn:  2,
 		CreditColumn: 3,
 	}
 	parser := NewParser(config)

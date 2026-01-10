@@ -30,8 +30,8 @@ type FuzzyMatcher struct {
 }
 
 type fuzzyPattern struct {
-	normalized string     // Uppercase, trimmed pattern for matching
-	cleanName  string     // Display name
+	normalized string // Uppercase, trimmed pattern for matching
+	cleanName  string // Display name
 	categoryID *uuid.UUID
 	ruleID     *uuid.UUID
 	merchantID *uuid.UUID

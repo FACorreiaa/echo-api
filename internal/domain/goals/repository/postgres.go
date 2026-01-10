@@ -45,7 +45,6 @@ func (r *PostgresGoalRepository) Create(ctx context.Context, goal *Goal) error {
 		goal.StartAt,
 		goal.EndAt,
 	).Scan(&goal.CreatedAt, &goal.UpdatedAt)
-
 	if err != nil {
 		return fmt.Errorf("failed to create goal: %w", err)
 	}

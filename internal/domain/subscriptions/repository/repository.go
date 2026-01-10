@@ -48,11 +48,11 @@ type RecurringSubscription struct {
 
 // MerchantTransactionGroup represents grouped transactions for a merchant
 type MerchantTransactionGroup struct {
-	MerchantName    string
-	TotalAmount     int64
+	MerchantName     string
+	TotalAmount      int64
 	TransactionDates []time.Time
-	AmountPerTx     []int64
-	CategoryID      *uuid.UUID
+	AmountPerTx      []int64
+	CategoryID       *uuid.UUID
 }
 
 // SubscriptionRepository defines the interface for subscription persistence

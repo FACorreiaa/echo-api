@@ -46,7 +46,6 @@ func (r *PostgresSubscriptionRepository) Create(ctx context.Context, sub *Recurr
 		sub.NextExpectedAt,
 		sub.OccurrenceCount,
 	).Scan(&sub.CreatedAt, &sub.UpdatedAt)
-
 	if err != nil {
 		return fmt.Errorf("failed to create subscription: %w", err)
 	}

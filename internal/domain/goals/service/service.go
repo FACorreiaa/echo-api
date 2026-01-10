@@ -14,23 +14,23 @@ import (
 
 // GoalProgress contains calculated progress information
 type GoalProgress struct {
-	Goal                 *repository.Goal
-	ProgressPercent      float64 // 0-100, current/target
-	PacePercent          float64 // 100 = on track, <100 = behind
-	IsBehindPace         bool
-	PaceMessage          string
-	DaysRemaining        int
-	AmountNeededPerDay   int64  // Cents needed per day to reach goal on time
-	Milestones           []Milestone
-	RecentContributions  []*repository.GoalContribution
-	NeedsAttention       bool
-	NudgeMessage         string
+	Goal                  *repository.Goal
+	ProgressPercent       float64 // 0-100, current/target
+	PacePercent           float64 // 100 = on track, <100 = behind
+	IsBehindPace          bool
+	PaceMessage           string
+	DaysRemaining         int
+	AmountNeededPerDay    int64 // Cents needed per day to reach goal on time
+	Milestones            []Milestone
+	RecentContributions   []*repository.GoalContribution
+	NeedsAttention        bool
+	NudgeMessage          string
 	SuggestedContribution int64 // Recommended next contribution
 }
 
 // Milestone represents a progress checkpoint
 type Milestone struct {
-	Percent    int       // 25, 50, 75, 100
+	Percent    int // 25, 50, 75, 100
 	Reached    bool
 	ReachedAt  *time.Time
 	ExpectedBy time.Time
@@ -56,16 +56,16 @@ func (s *Service) CreateGoal(ctx context.Context, userID uuid.UUID, name string,
 	}
 
 	goal := &repository.Goal{
-		ID:                uuid.New(),
-		UserID:            userID,
-		Name:              name,
-		Type:              goalType,
-		Status:            repository.GoalStatusActive,
-		TargetAmountMinor: targetMinor,
-		CurrencyCode:      currency,
+		ID:                 uuid.New(),
+		UserID:             userID,
+		Name:               name,
+		Type:               goalType,
+		Status:             repository.GoalStatusActive,
+		TargetAmountMinor:  targetMinor,
+		CurrencyCode:       currency,
 		CurrentAmountMinor: 0,
-		StartAt:           startAt,
-		EndAt:             endAt,
+		StartAt:            startAt,
+		EndAt:              endAt,
 	}
 
 	if err := s.repo.Create(ctx, goal); err != nil {

@@ -227,9 +227,9 @@ func (h *GoalsHandler) GetGoalProgress(
 	}
 
 	resp := &echov1.GetGoalProgressResponse{
-		Goal:              goalWithProgressToProto(progress.Goal, progress),
-		NeedsAttention:    progress.NeedsAttention,
-		NudgeMessage:      progress.NudgeMessage,
+		Goal:                  goalWithProgressToProto(progress.Goal, progress),
+		NeedsAttention:        progress.NeedsAttention,
+		NudgeMessage:          progress.NudgeMessage,
 		SuggestedContribution: toMoney(progress.SuggestedContribution, progress.Goal.CurrencyCode),
 	}
 
@@ -437,4 +437,3 @@ func protoToGoalStatus(s echov1.GoalStatus) repository.GoalStatus {
 		return repository.GoalStatusActive
 	}
 }
-

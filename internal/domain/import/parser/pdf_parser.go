@@ -7,10 +7,8 @@ import (
 	"io"
 )
 
-var (
-	// ErrPDFNotSupported indicates PDF parsing is not yet implemented
-	ErrPDFNotSupported = errors.New("PDF parsing not yet supported - coming soon")
-)
+// ErrPDFNotSupported indicates PDF parsing is not yet implemented
+var ErrPDFNotSupported = errors.New("PDF parsing not yet supported - coming soon")
 
 // PDFParser is a placeholder for future PDF parsing implementation.
 // This will use OCR to extract transaction data from PDF bank statements.

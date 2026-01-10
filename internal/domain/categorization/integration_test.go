@@ -305,4 +305,3 @@ func BenchmarkEngineVsFuzzy(b *testing.B) {
 		}
 	})
 }
-

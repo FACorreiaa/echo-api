@@ -12,16 +12,16 @@ import (
 
 // InsightChange represents a significant change detected this month
 type InsightChange struct {
-	Type           InsightChangeType
-	Title          string
-	Description    string
-	AmountChange   int64   // The delta amount in cents
-	PercentChange  float64 // Percentage change
-	CategoryID     *uuid.UUID
-	CategoryName   *string
-	MerchantName   *string
-	Icon           string
-	Sentiment      InsightChangeSentiment
+	Type          InsightChangeType
+	Title         string
+	Description   string
+	AmountChange  int64   // The delta amount in cents
+	PercentChange float64 // Percentage change
+	CategoryID    *uuid.UUID
+	CategoryName  *string
+	MerchantName  *string
+	Icon          string
+	Sentiment     InsightChangeSentiment
 }
 
 // InsightChangeType defines the type of change

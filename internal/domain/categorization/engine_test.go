@@ -132,10 +132,10 @@ func TestEngine_MatchBatch(t *testing.T) {
 	assert.Len(t, results, 5)
 	assert.NotNil(t, results[0]) // UBER
 	assert.Equal(t, "Uber", results[0].CleanName)
-	assert.Nil(t, results[1]) // RANDOM SHOP
+	assert.Nil(t, results[1])    // RANDOM SHOP
 	assert.NotNil(t, results[2]) // AMAZON
 	assert.Equal(t, "Amazon", results[2].CleanName)
-	assert.Nil(t, results[3]) // ANOTHER RANDOM
+	assert.Nil(t, results[3])    // ANOTHER RANDOM
 	assert.NotNil(t, results[4]) // UBER EATS
 	assert.Equal(t, "Uber", results[4].CleanName)
 }

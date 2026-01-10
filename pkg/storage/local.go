@@ -21,7 +21,7 @@ type LocalStorage struct {
 // NewLocalStorage creates a new local filesystem storage
 func NewLocalStorage(basePath string) (*LocalStorage, error) {
 	// Ensure base path exists
-	if err := os.MkdirAll(basePath, 0755); err != nil {
+	if err := os.MkdirAll(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create storage directory: %w", err)
 	}
 
@@ -34,7 +34,7 @@ func (s *LocalStorage) Upload(ctx context.Context, userID uuid.UUID, filename st
 
 	// Create user directory
 	userDir := filepath.Join(s.basePath, userID.String())
-	if err := os.MkdirAll(userDir, 0755); err != nil {
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create user directory: %w", err)
 	}
 
@@ -183,7 +183,7 @@ func (s *LocalStorage) GetReader(ctx context.Context, userID uuid.UUID, fileID u
 // saveMetadata saves file metadata to a JSON file
 func (s *LocalStorage) saveMetadata(userID, fileID uuid.UUID, info *FileInfo) error {
 	metaDir := filepath.Join(s.basePath, userID.String(), ".meta")
-	if err := os.MkdirAll(metaDir, 0755); err != nil {
+	if err := os.MkdirAll(metaDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create metadata directory: %w", err)
 	}
 
@@ -193,7 +193,7 @@ func (s *LocalStorage) saveMetadata(userID, fileID uuid.UUID, info *FileInfo) er
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(metaPath, data, 0644); err != nil {
+	if err := os.WriteFile(metaPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 

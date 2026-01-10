@@ -28,17 +28,17 @@ const (
 
 // SubscriptionReviewItem represents a subscription that needs review
 type SubscriptionReviewItem struct {
-	Subscription     *repository.RecurringSubscription
-	Reason           ReviewReason
-	ReasonMessage    string
+	Subscription      *repository.RecurringSubscription
+	Reason            ReviewReason
+	ReasonMessage     string
 	RecommendedCancel bool
 }
 
 // DetectionResult contains the results of subscription detection
 type DetectionResult struct {
-	Detected      []*repository.RecurringSubscription
-	NewCount      int
-	UpdatedCount  int
+	Detected     []*repository.RecurringSubscription
+	NewCount     int
+	UpdatedCount int
 }
 
 // Service provides subscription management business logic
@@ -283,9 +283,9 @@ func (s *Service) evaluateForReview(sub *repository.RecurringSubscription, now t
 	// Check if it's new (detected in last 30 days)
 	if sub.CreatedAt.After(now.AddDate(0, 0, -30)) {
 		return &SubscriptionReviewItem{
-			Subscription:     sub,
-			Reason:           ReviewReasonNew,
-			ReasonMessage:    "New subscription detected. Confirm this is expected.",
+			Subscription:      sub,
+			Reason:            ReviewReasonNew,
+			ReasonMessage:     "New subscription detected. Confirm this is expected.",
 			RecommendedCancel: false,
 		}
 	}
@@ -297,9 +297,9 @@ func (s *Service) evaluateForReview(sub *repository.RecurringSubscription, now t
 
 		if daysSinceLastSeen > expectedGap*2 {
 			return &SubscriptionReviewItem{
-				Subscription:     sub,
-				Reason:           ReviewReasonUnused,
-				ReasonMessage:    fmt.Sprintf("No charges in %d days. May no longer be active.", daysSinceLastSeen),
+				Subscription:      sub,
+				Reason:            ReviewReasonUnused,
+				ReasonMessage:     fmt.Sprintf("No charges in %d days. May no longer be active.", daysSinceLastSeen),
 				RecommendedCancel: true,
 			}
 		}
@@ -309,9 +309,9 @@ func (s *Service) evaluateForReview(sub *repository.RecurringSubscription, now t
 	monthlyAmount := s.normalizeToMonthly(sub.AmountMinor, sub.Cadence)
 	if monthlyAmount > 5000 { // €50/month threshold
 		return &SubscriptionReviewItem{
-			Subscription:     sub,
-			Reason:           ReviewReasonHighCost,
-			ReasonMessage:    fmt.Sprintf("High monthly cost: €%.2f. Worth reviewing.", float64(monthlyAmount)/100),
+			Subscription:      sub,
+			Reason:            ReviewReasonHighCost,
+			ReasonMessage:     fmt.Sprintf("High monthly cost: €%.2f. Worth reviewing.", float64(monthlyAmount)/100),
 			RecommendedCancel: false,
 		}
 	}

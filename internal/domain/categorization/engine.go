@@ -10,14 +10,14 @@ import (
 
 // MatchResult represents a single pattern match with its associated metadata
 type MatchResult struct {
-	Pattern    string     // The original pattern that matched
-	CleanName  string     // The clean merchant name to display
-	CategoryID *uuid.UUID // The category ID to assign
-	IsRecurring bool      // Whether this is a recurring transaction
-	RuleID     *uuid.UUID // If matched by a rule
-	MerchantID *uuid.UUID // If matched by a merchant
-	Priority   int        // Higher priority matches take precedence
-	IsRule     bool       // True if this came from a rule, false if from merchant
+	Pattern     string     // The original pattern that matched
+	CleanName   string     // The clean merchant name to display
+	CategoryID  *uuid.UUID // The category ID to assign
+	IsRecurring bool       // Whether this is a recurring transaction
+	RuleID      *uuid.UUID // If matched by a rule
+	MerchantID  *uuid.UUID // If matched by a merchant
+	Priority    int        // Higher priority matches take precedence
+	IsRule      bool       // True if this came from a rule, false if from merchant
 }
 
 // Engine is a high-performance pattern matching engine using the Aho-Corasick algorithm.
@@ -26,9 +26,9 @@ type MatchResult struct {
 // This is independent of the number of patterns!
 type Engine struct {
 	matcher  *ahocorasick.Matcher
-	patterns []string         // Unique patterns in same order as matcher
-	metadata [][]MatchResult  // Metadata for each pattern (may have multiple entries for same pattern)
-	mu       sync.RWMutex     // Protects rebuilding the matcher
+	patterns []string        // Unique patterns in same order as matcher
+	metadata [][]MatchResult // Metadata for each pattern (may have multiple entries for same pattern)
+	mu       sync.RWMutex    // Protects rebuilding the matcher
 }
 
 // NewEngine creates a new categorization engine from rules and merchants.

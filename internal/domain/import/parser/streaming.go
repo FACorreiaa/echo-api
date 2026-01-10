@@ -263,9 +263,9 @@ func (p *StreamingParser) parseBatchedAsync(ctx context.Context, reader io.Reade
 
 // ChunkReader wraps an io.Reader and provides progress tracking
 type ChunkReader struct {
-	reader    io.Reader
-	bytesRead int64
-	totalSize int64
+	reader     io.Reader
+	bytesRead  int64
+	totalSize  int64
 	onProgress func(bytesRead, totalSize int64)
 }
 

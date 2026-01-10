@@ -290,4 +290,3 @@ func pluralize(count int, singular string) string {
 	}
 	return fmt.Sprintf("%d %ss", count, singular)
 }
-
