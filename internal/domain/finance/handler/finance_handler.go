@@ -22,6 +22,7 @@ import (
 	goalsservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/goals/service"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/repository"
 	importservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/service"
+	planservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/service"
 	subscriptionsrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/repository"
 	subscriptionsservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/service"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/interceptors"
@@ -35,6 +36,7 @@ type FinanceHandler struct {
 	catService       *categorization.Service
 	goalsSvc         *goalsservice.Service
 	subscriptionsSvc *subscriptionsservice.Service
+	planSvc          *planservice.PlanService
 }
 
 // NewFinanceHandler constructs a new handler.
@@ -55,6 +57,12 @@ func (h *FinanceHandler) WithGoalsService(svc *goalsservice.Service) *FinanceHan
 // WithSubscriptionsService sets the subscriptions service on the handler
 func (h *FinanceHandler) WithSubscriptionsService(svc *subscriptionsservice.Service) *FinanceHandler {
 	h.subscriptionsSvc = svc
+	return h
+}
+
+// WithPlanService sets the plan service on the handler
+func (h *FinanceHandler) WithPlanService(svc *planservice.PlanService) *FinanceHandler {
+	h.planSvc = svc
 	return h
 }
 
@@ -571,6 +579,14 @@ func (h *FinanceHandler) CreateManualTransaction(
 	err = h.importRepo.InsertTransaction(ctx, tx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create transaction: %w", err))
+	}
+
+	// Double-Entry: Update Active Plan Actuals
+	if h.planSvc != nil {
+		if err := h.planSvc.ProcessTransaction(ctx, userID, tx.AmountCents, tx.CategoryID); err != nil {
+			// Log error but don't fail the request (budget tracking is secondary to data integrity)
+			fmt.Printf("failed to process transaction for plan: %v\n", err)
+		}
 	}
 
 	// TODO: Calculate budget impact feedback

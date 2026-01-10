@@ -43,15 +43,15 @@ type Dependencies struct {
 	Logger *slog.Logger
 
 	// Repositories
-	AuthRepo            repository.AuthRepository
-	UserRepo            user.UserRepo
-	ImportRepo          importrepo.ImportRepository
-	CategorizationRepo  *categorization.Repository
-	InsightsRepo        *insights.Repository
-	BalanceRepo         *balance.Repository
-	PlanRepo            planrepo.PlanRepository
-	GoalsRepo           goalsrepo.GoalRepository
-	SubscriptionsRepo   subscriptionsrepo.SubscriptionRepository
+	AuthRepo           repository.AuthRepository
+	UserRepo           user.UserRepo
+	ImportRepo         importrepo.ImportRepository
+	CategorizationRepo *categorization.Repository
+	InsightsRepo       *insights.Repository
+	BalanceRepo        *balance.Repository
+	PlanRepo           planrepo.PlanRepository
+	GoalsRepo          goalsrepo.GoalRepository
+	SubscriptionsRepo  subscriptionsrepo.SubscriptionRepository
 
 	// Services
 	TokenManager          service.TokenManager
@@ -221,7 +221,8 @@ func (d *Dependencies) initHandlers() error {
 	d.AuthHandler = handler.NewAuthHandler(d.AuthService)
 	d.FinanceHandler = financehandler.NewFinanceHandler(d.ImportService, d.ImportRepo, d.CategorizationService).
 		WithGoalsService(d.GoalsService).
-		WithSubscriptionsService(d.SubscriptionsService)
+		WithSubscriptionsService(d.SubscriptionsService).
+		WithPlanService(d.PlanService)
 	d.ImportHandler = importhandler.NewImportHandler(d.ImportService, d.FileStorage, d.Logger)
 	d.InsightsHandler = insightshandler.NewInsightsHandler(d.InsightsService)
 	d.BalanceHandler = balancehandler.NewBalanceHandler(d.BalanceService)

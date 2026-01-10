@@ -77,6 +77,7 @@ func (h *PlanHandler) CreatePlan(ctx context.Context, req *connect.Request[echov
 					WidgetType:    toRepoWidgetType(item.WidgetType),
 					FieldType:     toRepoFieldType(item.FieldType),
 					Labels:        item.Labels,
+					ItemType:      toRepoItemType(item.ItemType),
 				}
 				catInput.Items = append(catInput.Items, itemInput)
 			}
@@ -93,7 +94,7 @@ func (h *PlanHandler) CreatePlan(ctx context.Context, req *connect.Request[echov
 	}
 
 	return connect.NewResponse(&echov1.CreatePlanResponse{
-		Plan: toProtoPlan(plan),
+		Plan: toProtoPlanWithDetails(plan),
 	}), nil
 }
 
@@ -857,20 +858,6 @@ func toRepoItemType(t echov1.ItemType) repository.ItemType {
 		return repository.ItemTypeIncome
 	default:
 		return repository.ItemTypeBudget // Default
-	}
-}
-	case echov1.TargetTab_TARGET_TAB_RECURRING:
-		return repository.TargetTabRecurring
-	case echov1.TargetTab_TARGET_TAB_GOALS:
-		return repository.TargetTabGoals
-	case echov1.TargetTab_TARGET_TAB_INCOME:
-		return repository.TargetTabIncome
-	case echov1.TargetTab_TARGET_TAB_PORTFOLIO:
-		return repository.TargetTabPortfolio
-	case echov1.TargetTab_TARGET_TAB_LIABILITIES:
-		return repository.TargetTabLiabilities
-	default:
-		return repository.TargetTabBudgets // Default to budgets
 	}
 }
 

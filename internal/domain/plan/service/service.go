@@ -31,7 +31,10 @@ func NewPlanService(repo repository.PlanRepository, importRepo importrepo.Import
 }
 
 // CreatePlan creates a new financial plan
-func (s *PlanService) CreatePlan(ctx context.Context, userID uuid.UUID, input *CreatePlanInput) (*repository.UserPlan, error) {
+func (s *PlanService) CreatePlan(ctx context.Context, userID uuid.UUID, input *CreatePlanInput) (*PlanWithDetails, error) {
+	// Debug: log the user ID to help diagnose foreign key violations
+	s.logger.Info("creating plan", slog.String("user_id", userID.String()), slog.String("plan_name", input.Name))
+
 	config, _ := json.Marshal(map[string]any{
 		"chart_type":       "horizontal_bar",
 		"show_percentages": true,
@@ -120,7 +123,7 @@ func (s *PlanService) CreatePlan(ctx context.Context, userID uuid.UUID, input *C
 		return nil, err
 	}
 
-	return s.repo.GetPlanByID(ctx, plan.ID)
+	return s.GetPlanWithDetails(ctx, userID, plan.ID)
 }
 
 // GetPlan retrieves a plan by ID with ownership check
@@ -447,6 +450,62 @@ func (s *PlanService) ComputePlanActuals(ctx context.Context, userID, planID uui
 	)
 
 	return result, nil
+}
+
+// ProcessTransaction handles real-time dual-impact updates.
+// It finds the active plan and updates the relevant budget item's actual spend.
+func (s *PlanService) ProcessTransaction(ctx context.Context, userID uuid.UUID, txAmountMinor int64, txCategoryID *uuid.UUID) error {
+	// 1. Get Active Plan
+	activePlan, err := s.repo.GetActivePlan(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get active plan: %w", err)
+	}
+	if activePlan == nil {
+		// No active plan, nothing to update. This is valid.
+		return nil
+	}
+
+	// 2. If transaction has no category, we can't match it to a budget item
+	if txCategoryID == nil {
+		return nil
+	}
+
+	// 3. Find matching Plan Item(s)
+	// We need to fetch items to match category_id.
+	// Optimization: Repository method `GetItemsByCategoryID`?
+	// Existing method: `GetItemsByCategory`
+	items, err := s.repo.GetItemsByCategory(ctx, *txCategoryID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch items for category %s: %w", txCategoryID, err)
+	}
+
+	// Filter items belonging to the active plan
+	var matchedItem *repository.PlanItem
+	for _, item := range items {
+		if item.PlanID == activePlan.ID {
+			matchedItem = item
+			break // Assuming 1-to-1 mapping for simplicity per plan per category
+		}
+	}
+
+	if matchedItem != nil {
+		// 4. Update Actual
+		if err := s.repo.IncrementPlanItemActual(ctx, matchedItem.ID, txAmountMinor); err != nil {
+			s.logger.Error("failed to increment plan item actual",
+				slog.String("item_id", matchedItem.ID.String()),
+				slog.Int64("amount", txAmountMinor),
+				slog.Any("error", err),
+			)
+			return err
+		}
+		s.logger.Info("dual-impact update success",
+			slog.String("plan_id", activePlan.ID.String()),
+			slog.String("item_id", matchedItem.ID.String()),
+			slog.Int64("amount_added", txAmountMinor),
+		)
+	}
+
+	return nil
 }
 
 // ============================================================================

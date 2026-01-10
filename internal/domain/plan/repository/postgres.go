@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -215,6 +216,34 @@ func (r *PostgresPlanRepository) SetActivePlan(ctx context.Context, userID, plan
 	}
 
 	return tx.Commit(ctx)
+}
+
+// GetActivePlan retrieves the active plan for a user
+func (r *PostgresPlanRepository) GetActivePlan(ctx context.Context, userID uuid.UUID) (*UserPlan, error) {
+	query := `
+		SELECT id, user_id, name, description, status, source_type,
+		       source_file_id, excel_sheet_name, config,
+		       total_income_minor, total_expenses_minor, currency_code,
+		       created_at, updated_at
+		FROM user_plans
+		WHERE user_id = $1 AND status = 'active'
+		LIMIT 1
+	`
+	var plan UserPlan
+	err := r.pool.QueryRow(ctx, query, userID).Scan(
+		&plan.ID, &plan.UserID, &plan.Name, &plan.Description, &plan.Status, &plan.SourceType,
+		&plan.SourceFileID, &plan.ExcelSheetName, &plan.Config,
+		&plan.TotalIncomeMinor, &plan.TotalExpensesMinor, &plan.CurrencyCode,
+		&plan.CreatedAt, &plan.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil // No active plan
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active plan: %w", err)
+	}
+
+	return &plan, nil
 }
 
 // ============================================================================
@@ -484,6 +513,16 @@ func (r *PostgresPlanRepository) UpdatePlanItemActual(ctx context.Context, itemI
 	return nil
 }
 
+// IncrementPlanItemActual atomically increments the actual amount for a plan item
+func (r *PostgresPlanRepository) IncrementPlanItemActual(ctx context.Context, itemID uuid.UUID, amountMinor int64) error {
+	query := `UPDATE plan_items SET actual_minor = actual_minor + $2, updated_at = NOW() WHERE id = $1`
+	_, err := r.pool.Exec(ctx, query, itemID, amountMinor)
+	if err != nil {
+		return fmt.Errorf("failed to increment item actual: %w", err)
+	}
+	return nil
+}
+
 // ============================================================================
 // Bulk Operations
 // ============================================================================
@@ -511,6 +550,10 @@ func (r *PostgresPlanRepository) CreatePlanWithStructure(ctx context.Context, pl
 		plan.SourceFileID, plan.ExcelSheetName, plan.Config, plan.CurrencyCode,
 	)
 	if err != nil {
+		// Check if it's a foreign key violation for user_id
+		if strings.Contains(err.Error(), "user_plans_user_id_fkey") {
+			return fmt.Errorf("failed to create plan: user_id %s does not exist in users table: %w", plan.UserID, err)
+		}
 		return fmt.Errorf("failed to create plan: %w", err)
 	}
 

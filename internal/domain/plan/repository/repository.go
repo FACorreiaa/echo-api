@@ -169,6 +169,7 @@ type PlanRepository interface {
 	UpdatePlan(ctx context.Context, plan *UserPlan) error
 	DeletePlan(ctx context.Context, planID uuid.UUID) error
 	SetActivePlan(ctx context.Context, userID, planID uuid.UUID) error
+	GetActivePlan(ctx context.Context, userID uuid.UUID) (*UserPlan, error)
 
 	// UpdatePlanStructure updates the entire structure of a plan
 	UpdatePlanStructure(ctx context.Context, planID uuid.UUID, groups []*PlanCategoryGroup, categories []*PlanCategory, items []*PlanItem) error
@@ -189,6 +190,7 @@ type PlanRepository interface {
 	UpdateItem(ctx context.Context, item *PlanItem) error
 	UpdateItemBudget(ctx context.Context, itemID uuid.UUID, budgetedMinor int64) error
 	UpdatePlanItemActual(ctx context.Context, itemID uuid.UUID, actualMinor int64) error
+	IncrementPlanItemActual(ctx context.Context, itemID uuid.UUID, amountMinor int64) error
 
 	// Bulk operations
 	CreatePlanWithStructure(ctx context.Context, plan *UserPlan, groups []*PlanCategoryGroup, categories []*PlanCategory, items []*PlanItem) error
