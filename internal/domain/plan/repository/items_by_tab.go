@@ -23,8 +23,46 @@ type PlanItemWithConfig struct {
 	Behavior        *ItemBehavior `db:"behavior"`
 }
 
+// itemTypeToTargetTab maps legacy ItemType to TargetTab for fallback filtering
+func itemTypeToTargetTab(itemType ItemType) TargetTab {
+	switch itemType {
+	case ItemTypeRecurring:
+		return TargetTabRecurring
+	case ItemTypeGoal:
+		return TargetTabGoals
+	case ItemTypeIncome:
+		return TargetTabIncome
+	case ItemTypeBudget:
+		return TargetTabBudgets
+	default:
+		return TargetTabBudgets
+	}
+}
+
+// targetTabToItemType maps TargetTab to ItemType for query fallback
+func targetTabToItemType(tab TargetTab) ItemType {
+	switch tab {
+	case TargetTabRecurring:
+		return ItemTypeRecurring
+	case TargetTabGoals:
+		return ItemTypeGoal
+	case TargetTabIncome:
+		return ItemTypeIncome
+	case TargetTabBudgets:
+		return ItemTypeBudget
+	default:
+		return ItemTypeBudget
+	}
+}
+
 // GetItemsByTab returns items for a plan filtered by target tab
+// Items match if:
+// 1. They have a config_id with matching target_tab, OR
+// 2. They have no config_id but have matching item_type (legacy fallback)
 func (r *PostgresPlanRepository) GetItemsByTab(ctx context.Context, planID uuid.UUID, targetTab TargetTab) ([]PlanItemWithConfig, error) {
+	// Convert targetTab to corresponding itemType for fallback matching
+	fallbackItemType := targetTabToItemType(targetTab)
+
 	query := `
 		SELECT 
 			pi.id,
@@ -42,12 +80,15 @@ func (r *PostgresPlanRepository) GetItemsByTab(ctx context.Context, planID uuid.
 		LEFT JOIN plan_categories pc ON pi.category_id = pc.id
 		LEFT JOIN plan_category_groups pcg ON pc.group_id = pcg.id
 		LEFT JOIN plan_item_configs pic ON pi.config_id = pic.id
-		WHERE pcg.plan_id = $1
-		  AND pic.target_tab = $2
+		WHERE pi.plan_id = $1
+		  AND (
+		      pic.target_tab = $2
+		      OR (pi.config_id IS NULL AND pi.item_type = $3)
+		  )
 		ORDER BY pcg.sort_order, pc.sort_order, pi.sort_order
 	`
 
-	rows, err := r.pool.Query(ctx, query, planID, targetTab)
+	rows, err := r.pool.Query(ctx, query, planID, targetTab, fallbackItemType)
 	if err != nil {
 		return nil, err
 	}

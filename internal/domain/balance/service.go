@@ -65,15 +65,18 @@ func (s *Service) GetBalance(ctx context.Context, userID uuid.UUID, accountID *u
 	totalNetWorth := totalCash + totalInvestment
 
 	// Add opening balance if set (this is the user's starting point)
+	// Opening balance contributes to both net worth AND safe-to-spend
 	openingBalance, err := s.repo.GetOpeningBalance(ctx, userID)
 	if err == nil && openingBalance != nil {
 		totalNetWorth += openingBalance.AmountMinor
+		// Opening balance is considered available cash for spending
+		totalCash += openingBalance.AmountMinor
 	}
 
 	// Get upcoming bills
 	upcomingBills, _ := s.repo.GetUpcomingBills(ctx, userID)
 
-	// Safe to spend = cash - upcoming bills
+	// Safe to spend = cash (including opening balance) - upcoming bills
 	safeToSpend := totalCash - upcomingBills
 	if safeToSpend < 0 {
 		safeToSpend = 0
