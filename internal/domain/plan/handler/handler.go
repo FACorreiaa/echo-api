@@ -622,6 +622,11 @@ func toProtoPlanWithDetails(d *service.PlanWithDetails) *echov1.UserPlan {
 			Name:     i.Name,
 			Budgeted: &echov1.Money{AmountMinor: i.BudgetedMinor, CurrencyCode: d.Plan.CurrencyCode},
 			Actual:   &echov1.Money{AmountMinor: i.ActualMinor, CurrencyCode: d.Plan.CurrencyCode},
+			ItemType: toProtoItemType(i.ItemType),
+		}
+		if i.ConfigID != nil {
+			idStr := i.ConfigID.String()
+			item.ConfigId = &idStr
 		}
 		if i.CategoryID != nil {
 			if cat, ok := categoryMap[*i.CategoryID]; ok {
@@ -858,6 +863,21 @@ func toRepoItemType(t echov1.ItemType) repository.ItemType {
 		return repository.ItemTypeIncome
 	default:
 		return repository.ItemTypeBudget // Default
+	}
+}
+
+func toProtoItemType(t repository.ItemType) echov1.ItemType {
+	switch t {
+	case repository.ItemTypeBudget:
+		return echov1.ItemType_ITEM_TYPE_BUDGET
+	case repository.ItemTypeRecurring:
+		return echov1.ItemType_ITEM_TYPE_RECURRING
+	case repository.ItemTypeGoal:
+		return echov1.ItemType_ITEM_TYPE_GOAL
+	case repository.ItemTypeIncome:
+		return echov1.ItemType_ITEM_TYPE_INCOME
+	default:
+		return echov1.ItemType_ITEM_TYPE_BUDGET // Default
 	}
 }
 
