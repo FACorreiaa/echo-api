@@ -60,6 +60,68 @@ func (s *PlanService) AnalyzeExcel(r io.Reader) (*ExcelAnalysisResult, error) {
 	return result, nil
 }
 
+// AnalyzeExcelTree returns a hierarchical ML-based analysis of an Excel sheet
+// This uses structural heuristics and Naive Bayes text classification
+func (s *PlanService) AnalyzeExcelTree(r io.Reader, sheetName string, catCol, valCol string, startRow int) (*excel.AnalysisTreeResponse, error) {
+	parser, err := excel.NewParserFromReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Excel: %w", err)
+	}
+	defer parser.Close()
+
+	// Use default mapping if not specified
+	if catCol == "" {
+		catCol = "A"
+	}
+	if valCol == "" {
+		valCol = "C"
+	}
+	if startRow <= 0 {
+		startRow = 7 // Common header offset for budget spreadsheets
+	}
+
+	// Create structural analyzer with ML support
+	analyzer := excel.NewStructuralAnalyzer(parser.GetFile())
+
+	// Build column profiles
+	profiles, err := analyzer.BuildColumnProfiles(sheetName, 100)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build column profiles: %w", err)
+	}
+
+	// Analyze sheet and build tree
+	result, err := analyzer.AnalyzeSheetTree(sheetName, catCol, valCol, startRow)
+	if err != nil {
+		return nil, fmt.Errorf("failed to analyze sheet: %w", err)
+	}
+
+	result.ColumnProfiles = profiles
+	return result, nil
+}
+
+// LearnFromCorrection teaches the ML model from user corrections
+func (s *PlanService) LearnFromCorrection(itemName string, tag string) {
+	predictor := excel.GetMLPredictor()
+
+	var itemTag excel.ItemTag
+	switch tag {
+	case "B":
+		itemTag = excel.TagBudget
+	case "R":
+		itemTag = excel.TagRecurring
+	case "S":
+		itemTag = excel.TagSavings
+	case "IN":
+		itemTag = excel.TagIncome
+	case "D":
+		itemTag = excel.TagDebt
+	default:
+		return
+	}
+
+	predictor.Learn(itemName, itemTag)
+}
+
 // ImportFromExcel imports a plan from an Excel file
 func (s *PlanService) ImportFromExcel(ctx context.Context, userID uuid.UUID, r io.Reader, sheetName string, config *ExcelImportConfig, planName string) (*ExcelImportResult, error) {
 	parser, err := excel.NewParserFromReader(r)

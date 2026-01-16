@@ -91,6 +91,11 @@ func (p *Parser) Close() error {
 	return nil
 }
 
+// GetFile returns the underlying excelize.File for advanced operations
+func (p *Parser) GetFile() *excelize.File {
+	return p.file
+}
+
 // AnalyzeAllSheets analyzes all sheets and returns analysis for each
 func (p *Parser) AnalyzeAllSheets() ([]SheetAnalysis, string, error) {
 	sheets := p.file.GetSheetList()
