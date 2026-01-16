@@ -150,6 +150,10 @@ func (f *fakePlanRepository) GetItemsByTabWithTotals(ctx context.Context, planID
 	return nil, 0, 0, nil
 }
 
+func (f *fakePlanRepository) FindItemByCategoryAndType(ctx context.Context, planID uuid.UUID, categoryID uuid.UUID, itemTypes []repository.ItemType) (*uuid.UUID, error) {
+	return nil, nil
+}
+
 // fakeImportRepository
 type fakeImportRepository struct{}
 

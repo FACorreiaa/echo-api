@@ -454,7 +454,9 @@ func (s *PlanService) ComputePlanActuals(ctx context.Context, userID, planID uui
 
 // ProcessTransaction handles real-time dual-impact updates.
 // It finds the active plan and updates the relevant budget item's actual spend.
-func (s *PlanService) ProcessTransaction(ctx context.Context, userID uuid.UUID, txAmountMinor int64, txCategoryID *uuid.UUID) error {
+// Matching is done by category name (case-insensitive) since transaction categories
+// and plan categories are in different ID spaces.
+func (s *PlanService) ProcessTransaction(ctx context.Context, userID uuid.UUID, txAmountMinor int64, txCategoryID *uuid.UUID, txCategoryName string) error {
 	// 1. Get Active Plan
 	activePlan, err := s.repo.GetActivePlan(ctx, userID)
 	if err != nil {
@@ -465,35 +467,42 @@ func (s *PlanService) ProcessTransaction(ctx context.Context, userID uuid.UUID, 
 		return nil
 	}
 
-	// 2. If transaction has no category, we can't match it to a budget item
-	if txCategoryID == nil {
+	// 2. If transaction has no category name, we can't match it to a budget item
+	if txCategoryName == "" {
 		return nil
 	}
 
-	// 3. Find matching Plan Item(s)
-	// We need to fetch items to match category_id.
-	// Optimization: Repository method `GetItemsByCategoryID`?
-	// Existing method: `GetItemsByCategory`
-	items, err := s.repo.GetItemsByCategory(ctx, *txCategoryID)
+	// 3. Get all items for the active plan
+	items, err := s.repo.GetItemsByPlan(ctx, activePlan.ID)
 	if err != nil {
-		return fmt.Errorf("failed to fetch items for category %s: %w", txCategoryID, err)
+		return fmt.Errorf("failed to fetch items for plan %s: %w", activePlan.ID, err)
 	}
 
-	// Filter items belonging to the active plan
+	// 4. Find matching item by name (case-insensitive)
+	txCategoryLower := strings.ToLower(txCategoryName)
 	var matchedItem *repository.PlanItem
 	for _, item := range items {
-		if item.PlanID == activePlan.ID {
-			matchedItem = item
-			break // Assuming 1-to-1 mapping for simplicity per plan per category
+		// Match by item name OR category name
+		if strings.ToLower(item.Name) == txCategoryLower {
+			// Only match budget/recurring items (not goals/income)
+			if item.ItemType == repository.ItemTypeBudget || item.ItemType == repository.ItemTypeRecurring {
+				matchedItem = item
+				break
+			}
 		}
 	}
 
 	if matchedItem != nil {
-		// 4. Update Actual
-		if err := s.repo.IncrementPlanItemActual(ctx, matchedItem.ID, txAmountMinor); err != nil {
+		// 5. Update Actual (use absolute value since expenses are negative)
+		amountToAdd := txAmountMinor
+		if amountToAdd < 0 {
+			amountToAdd = -amountToAdd // Make positive for budget tracking
+		}
+
+		if err := s.repo.IncrementPlanItemActual(ctx, matchedItem.ID, amountToAdd); err != nil {
 			s.logger.Error("failed to increment plan item actual",
 				slog.String("item_id", matchedItem.ID.String()),
-				slog.Int64("amount", txAmountMinor),
+				slog.Int64("amount", amountToAdd),
 				slog.Any("error", err),
 			)
 			return err
@@ -501,7 +510,14 @@ func (s *PlanService) ProcessTransaction(ctx context.Context, userID uuid.UUID, 
 		s.logger.Info("dual-impact update success",
 			slog.String("plan_id", activePlan.ID.String()),
 			slog.String("item_id", matchedItem.ID.String()),
-			slog.Int64("amount_added", txAmountMinor),
+			slog.String("item_name", matchedItem.Name),
+			slog.String("category", txCategoryName),
+			slog.Int64("amount_added", amountToAdd),
+		)
+	} else {
+		s.logger.Debug("no matching budget item for transaction category",
+			slog.String("category", txCategoryName),
+			slog.String("plan_id", activePlan.ID.String()),
 		)
 	}
 

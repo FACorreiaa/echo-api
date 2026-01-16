@@ -191,6 +191,7 @@ type PlanRepository interface {
 	UpdateItemBudget(ctx context.Context, itemID uuid.UUID, budgetedMinor int64) error
 	UpdatePlanItemActual(ctx context.Context, itemID uuid.UUID, actualMinor int64) error
 	IncrementPlanItemActual(ctx context.Context, itemID uuid.UUID, amountMinor int64) error
+	FindItemByCategoryAndType(ctx context.Context, planID uuid.UUID, categoryID uuid.UUID, itemTypes []ItemType) (*uuid.UUID, error)
 
 	// Bulk operations
 	CreatePlanWithStructure(ctx context.Context, plan *UserPlan, groups []*PlanCategoryGroup, categories []*PlanCategory, items []*PlanItem) error

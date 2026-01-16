@@ -582,8 +582,10 @@ func (h *FinanceHandler) CreateManualTransaction(
 	}
 
 	// Double-Entry: Update Active Plan Actuals
+	// Pass description as category name hint for matching budget items
 	if h.planSvc != nil {
-		if err := h.planSvc.ProcessTransaction(ctx, userID, tx.AmountCents, tx.CategoryID); err != nil {
+		categoryName := description // Use description as category hint
+		if err := h.planSvc.ProcessTransaction(ctx, userID, tx.AmountCents, tx.CategoryID, categoryName); err != nil {
 			// Log error but don't fail the request (budget tracking is secondary to data integrity)
 			fmt.Printf("failed to process transaction for plan: %v\n", err)
 		}

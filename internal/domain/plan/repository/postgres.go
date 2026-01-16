@@ -523,6 +523,39 @@ func (r *PostgresPlanRepository) IncrementPlanItemActual(ctx context.Context, it
 	return nil
 }
 
+// FindItemByCategoryAndType finds a plan item matching the given category and item types
+// Used for transaction attribution - linking spending to budget items
+func (r *PostgresPlanRepository) FindItemByCategoryAndType(ctx context.Context, planID uuid.UUID, categoryID uuid.UUID, itemTypes []ItemType) (*uuid.UUID, error) {
+	if len(itemTypes) == 0 {
+		return nil, nil
+	}
+
+	// Build IN clause for item types
+	typeStrings := make([]string, len(itemTypes))
+	for i, t := range itemTypes {
+		typeStrings[i] = string(t)
+	}
+
+	query := `
+		SELECT id FROM plan_items 
+		WHERE plan_id = $1 
+		  AND category_id = $2 
+		  AND item_type = ANY($3::text[])
+		ORDER BY sort_order ASC
+		LIMIT 1
+	`
+
+	var itemID uuid.UUID
+	err := r.pool.QueryRow(ctx, query, planID, categoryID, typeStrings).Scan(&itemID)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find item by category and type: %w", err)
+	}
+	return &itemID, nil
+}
+
 // ============================================================================
 // Bulk Operations
 // ============================================================================
