@@ -29,6 +29,9 @@ import (
 	subscriptionshandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/handler"
 	subscriptionsrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/repository"
 	subscriptionsservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/subscriptions/service"
+	waitlisthandler "github.com/FACorreiaa/smart-finance-tracker/internal/domain/waitlist/handler"
+	waitlistrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/waitlist/repository"
+	waitlistservice "github.com/FACorreiaa/smart-finance-tracker/internal/domain/waitlist/service"
 
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/config"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/db"
@@ -52,6 +55,7 @@ type Dependencies struct {
 	PlanRepo           planrepo.PlanRepository
 	GoalsRepo          goalsrepo.GoalRepository
 	SubscriptionsRepo  subscriptionsrepo.SubscriptionRepository
+	WaitlistRepo       waitlistrepo.WaitlistRepository
 
 	// Services
 	TokenManager          service.TokenManager
@@ -65,6 +69,7 @@ type Dependencies struct {
 	PlanService           *planservice.PlanService
 	GoalsService          *goalsservice.Service
 	SubscriptionsService  *subscriptionsservice.Service
+	WaitlistService       *waitlistservice.WaitlistService
 	FileStorage           storage.Storage
 
 	// Handlers
@@ -77,6 +82,7 @@ type Dependencies struct {
 	PlanHandler          *planhandler.PlanHandler
 	GoalsHandler         *goalshandler.GoalsHandler
 	SubscriptionsHandler *subscriptionshandler.SubscriptionsHandler
+	WaitlistHandler      *waitlisthandler.WaitlistHandler
 }
 
 // InitDependencies initializes all application dependencies
@@ -145,6 +151,7 @@ func (d *Dependencies) initRepositories() error {
 	d.PlanRepo = planrepo.NewPostgresPlanRepository(d.DB.Pool)
 	d.GoalsRepo = goalsrepo.NewPostgresGoalRepository(d.DB.Pool)
 	d.SubscriptionsRepo = subscriptionsrepo.NewPostgresSubscriptionRepository(d.DB.Pool)
+	d.WaitlistRepo = waitlistrepo.NewPostgresWaitlistRepository(d.DB.Pool)
 
 	d.Logger.Info("repositories initialized")
 	return nil
@@ -201,6 +208,9 @@ func (d *Dependencies) initServices() error {
 	// Subscriptions service for recurring charge detection
 	d.SubscriptionsService = subscriptionsservice.NewService(d.SubscriptionsRepo)
 
+	// Waitlist service for pre-launch signups with Resend email integration
+	d.WaitlistService = waitlistservice.NewWaitlistService(d.WaitlistRepo, d.Logger)
+
 	// File storage for uploads (defaults to local storage)
 	storageCfg := &storage.Config{
 		Type:      storage.StorageTypeLocal,
@@ -229,6 +239,7 @@ func (d *Dependencies) initHandlers() error {
 	d.PlanHandler = planhandler.NewPlanHandler(d.PlanService, d.FileStorage)
 	d.GoalsHandler = goalshandler.NewGoalsHandler(d.GoalsService)
 	d.SubscriptionsHandler = subscriptionshandler.NewSubscriptionsHandler(d.SubscriptionsService)
+	d.WaitlistHandler = waitlisthandler.NewWaitlistHandler(d.WaitlistService)
 
 	d.Logger.Info("handlers initialized")
 	return nil

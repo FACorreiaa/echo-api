@@ -33,6 +33,7 @@ func SetupRouter(deps *Dependencies) http.Handler {
 		echov1connect.AuthServiceRegisterProcedure,
 		echov1connect.AuthServiceLoginProcedure,
 		echov1connect.AuthServiceRefreshProcedure,
+		echov1connect.WaitlistServiceAddToWaitlistProcedure, // Public waitlist signup
 		// Note: Logout and GetMe require authentication
 	}
 
@@ -158,6 +159,12 @@ func registerConnectRoutes(mux *http.ServeMux, deps *Dependencies, opts connect.
 		planPath, planHandler := echov1connect.NewPlanServiceHandler(deps.PlanHandler, opts)
 		mux.Handle(planPath, planHandler)
 		deps.Logger.Info("registered Connect RPC service", "path", planPath)
+	}
+
+	if deps.WaitlistHandler != nil {
+		waitlistPath, waitlistHandler := echov1connect.NewWaitlistServiceHandler(deps.WaitlistHandler, opts)
+		mux.Handle(waitlistPath, waitlistHandler)
+		deps.Logger.Info("registered Connect RPC service", "path", waitlistPath)
 	}
 
 	deps.Logger.Info("Connect RPC routes configured")
