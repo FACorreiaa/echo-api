@@ -11,6 +11,7 @@ import (
 
 	"buf.build/gen/go/echo-tracker/echo/connectrpc/go/echo/v1/echov1connect"
 	echov1 "buf.build/gen/go/echo-tracker/echo/protocolbuffers/go/echo/v1"
+	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/excel"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/repository"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/service"
 	"github.com/FACorreiaa/smart-finance-tracker/pkg/interceptors"
@@ -500,6 +501,146 @@ func (h *PlanHandler) AnalyzeExcelForPlan(ctx context.Context, req *connect.Requ
 	return connect.NewResponse(&echov1.AnalyzeExcelForPlanResponse{
 		Sheets:         sheets,
 		SuggestedSheet: result.SuggestedSheet,
+	}), nil
+}
+
+// AnalyzeExcelTree performs ML-based structural analysis returning a hierarchical tree
+func (h *PlanHandler) AnalyzeExcelTree(ctx context.Context, req *connect.Request[echov1.AnalyzeExcelTreeRequest]) (*connect.Response[echov1.AnalyzeExcelTreeResponse], error) {
+	userIDStr, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not authenticated"))
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	fileID, err := uuid.Parse(req.Msg.FileId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid file ID"))
+	}
+
+	// Get file from storage
+	reader, err := h.storage.GetReader(ctx, userID, fileID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	defer reader.Close()
+
+	// Use the structural analyzer with ML support
+	result, err := h.svc.AnalyzeExcelTree(
+		reader,
+		req.Msg.SheetName,
+		req.Msg.CategoryColumn,
+		req.Msg.ValueColumn,
+		int(req.Msg.StartRow),
+	)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Convert to proto format
+	nodes := convertAnalysisNodes(result.Nodes)
+
+	resp := &echov1.AnalyzeExcelTreeResponse{
+		SheetName:         result.SheetName,
+		Nodes:             nodes,
+		TotalGroups:       int32(result.TotalGroups),
+		TotalItems:        int32(result.TotalItems),
+		OverallConfidence: result.OverallConfidence,
+	}
+
+	// Include detected mapping if available
+	if result.DetectedMapping != nil {
+		resp.DetectedMapping = &echov1.DetectedColumnMapping{
+			CategoryColumn:   result.DetectedMapping.CategoryColumn,
+			ValueColumn:      result.DetectedMapping.ValueColumn,
+			HeaderRow:        int32(result.DetectedMapping.HeaderRow),
+			PercentageColumn: result.DetectedMapping.PercentageColumn,
+			Confidence:       result.DetectedMapping.Confidence,
+		}
+	}
+
+	return connect.NewResponse(resp), nil
+}
+
+// convertAnalysisNodes converts internal AnalysisNode to proto format
+func convertAnalysisNodes(nodes []excel.AnalysisNode) []*echov1.AnalysisNode {
+	result := make([]*echov1.AnalysisNode, len(nodes))
+	for i, n := range nodes {
+		protoNode := &echov1.AnalysisNode{
+			Id:         n.ID,
+			Name:       n.Name,
+			ValueMinor: int64(n.Value * 100), // Convert to minor units
+			Confidence: n.Confidence,
+			ExcelCell:  n.ExcelCell,
+			ExcelRow:   int32(n.ExcelRow),
+			Formula:    n.Formula,
+		}
+
+		// Convert node type
+		switch n.Type {
+		case excel.NodeTypeGroup:
+			protoNode.Type = echov1.AnalysisNodeType_ANALYSIS_NODE_TYPE_GROUP
+		case excel.NodeTypeItem:
+			protoNode.Type = echov1.AnalysisNodeType_ANALYSIS_NODE_TYPE_ITEM
+		case excel.NodeTypeIgnore:
+			protoNode.Type = echov1.AnalysisNodeType_ANALYSIS_NODE_TYPE_IGNORE
+		}
+
+		// Convert item tag
+		switch n.Tag {
+		case excel.TagBudget:
+			protoNode.Tag = echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_BUDGET
+		case excel.TagRecurring:
+			protoNode.Tag = echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_RECURRING
+		case excel.TagSavings:
+			protoNode.Tag = echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_SAVINGS
+		case excel.TagIncome:
+			protoNode.Tag = echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_INCOME
+		case excel.TagDebt:
+			protoNode.Tag = echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_DEBT
+		}
+
+		// Recursively convert children
+		if len(n.Children) > 0 {
+			protoNode.Children = convertAnalysisNodes(n.Children)
+		}
+
+		result[i] = protoNode
+	}
+	return result
+}
+
+// LearnFromExcelCorrection teaches the ML model from user corrections
+func (h *PlanHandler) LearnFromExcelCorrection(ctx context.Context, req *connect.Request[echov1.LearnFromExcelCorrectionRequest]) (*connect.Response[echov1.LearnFromExcelCorrectionResponse], error) {
+	_, ok := interceptors.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not authenticated"))
+	}
+
+	// Convert proto tag to internal tag
+	var tag string
+	switch req.Msg.CorrectTag {
+	case echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_BUDGET:
+		tag = "B"
+	case echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_RECURRING:
+		tag = "R"
+	case echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_SAVINGS:
+		tag = "S"
+	case echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_INCOME:
+		tag = "IN"
+	case echov1.AnalysisItemTag_ANALYSIS_ITEM_TAG_DEBT:
+		tag = "D"
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tag"))
+	}
+
+	// Teach the model
+	h.svc.LearnFromCorrection(req.Msg.ItemName, tag)
+
+	return connect.NewResponse(&echov1.LearnFromExcelCorrectionResponse{
+		Success: true,
 	}), nil
 }
 

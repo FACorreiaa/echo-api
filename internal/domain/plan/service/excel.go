@@ -122,6 +122,78 @@ func (s *PlanService) LearnFromCorrection(itemName string, tag string) {
 	predictor.Learn(itemName, itemTag)
 }
 
+// LearnFromCorrectionWithPersist teaches the ML model and persists to database
+func (s *PlanService) LearnFromCorrectionWithPersist(ctx context.Context, userID uuid.UUID, itemName string, predictedTag, correctedTag string) error {
+	predictor := excel.GetMLPredictor()
+
+	var itemTag excel.ItemTag
+	switch correctedTag {
+	case "B":
+		itemTag = excel.TagBudget
+	case "R":
+		itemTag = excel.TagRecurring
+	case "S":
+		itemTag = excel.TagSavings
+	case "IN":
+		itemTag = excel.TagIncome
+	case "D":
+		itemTag = excel.TagDebt
+	default:
+		return nil // Unknown tag
+	}
+
+	// Learn in-memory (immediate effect)
+	predictor.Learn(itemName, itemTag)
+
+	// Persist to database if pool is available
+	if s.pool != nil {
+		mlRepo := repository.NewMLCorrectionRepository(s.pool)
+		return mlRepo.SaveCorrection(ctx, userID, itemName, predictedTag, correctedTag, "TEXT", nil)
+	}
+
+	return nil
+}
+
+// LoadUserCorrections hydrates the ML model with user-specific corrections from DB
+func (s *PlanService) LoadUserCorrections(ctx context.Context, userID uuid.UUID) error {
+	if s.pool == nil {
+		return nil // No pool available
+	}
+
+	mlRepo := repository.NewMLCorrectionRepository(s.pool)
+	corrections, err := mlRepo.GetCorrectionsByModelType(ctx, userID, "TEXT")
+	if err != nil {
+		return err
+	}
+
+	predictor := excel.GetMLPredictor()
+
+	// Convert to excel package format
+	excelCorrections := make([]excel.UserMLCorrection, len(corrections))
+	for i, c := range corrections {
+		var correctedTag excel.ItemTag
+		switch c.CorrectedTag {
+		case "B":
+			correctedTag = excel.TagBudget
+		case "R":
+			correctedTag = excel.TagRecurring
+		case "S":
+			correctedTag = excel.TagSavings
+		case "IN":
+			correctedTag = excel.TagIncome
+		case "D":
+			correctedTag = excel.TagDebt
+		}
+		excelCorrections[i] = excel.UserMLCorrection{
+			Term:         c.Term,
+			CorrectedTag: correctedTag,
+		}
+	}
+
+	predictor.LearnBatch(excelCorrections)
+	return nil
+}
+
 // ImportFromExcel imports a plan from an Excel file
 func (s *PlanService) ImportFromExcel(ctx context.Context, userID uuid.UUID, r io.Reader, sheetName string, config *ExcelImportConfig, planName string) (*ExcelImportResult, error) {
 	parser, err := excel.NewParserFromReader(r)

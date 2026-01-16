@@ -233,7 +233,7 @@ func TestUpdatePlanStructure_Service(t *testing.T) {
 	repo := &fakePlanRepository{}
 	importRepo := &fakeImportRepository{}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	svc := NewPlanService(repo, importRepo, logger)
+	svc := NewPlanService(repo, importRepo, nil, logger)
 
 	ctx := context.Background()
 	userID := uuid.MustParse("92131338-3069-42b7-84bc-8c3866be237a")
@@ -277,7 +277,7 @@ func TestCreatePlan_Service_WithInitialActual(t *testing.T) {
 	repo := &fakePlanRepository{}
 	importRepo := &fakeImportRepository{}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	svc := NewPlanService(repo, importRepo, logger)
+	svc := NewPlanService(repo, importRepo, nil, logger)
 
 	ctx := context.Background()
 	userID := uuid.New()

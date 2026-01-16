@@ -239,7 +239,7 @@ func (a *StructuralAnalyzer) AnalyzeSheetTree(sheetName string, catCol, valCol s
 		features := a.buildRowFeatures(sheetName, catCell, valCell, catValue, valValue, rowIdx, totalRows)
 
 		// Classify the row
-		nodeType, confidence := a.classifyRow(features, catValue, valValue)
+		nodeType, structuralConfidence := a.classifyRow(features, catValue, valValue)
 
 		// Parse value
 		var value float64
@@ -248,16 +248,19 @@ func (a *StructuralAnalyzer) AnalyzeSheetTree(sheetName string, catCol, valCol s
 			value = v
 		}
 
-		// Predict tag using ML
-		tag := a.predictor.PredictTag(catValue)
+		// Predict tag using ML with confidence
+		tagPrediction := a.predictor.PredictTagWithConfidence(catValue)
+
+		// Combined confidence: average of structural and tag confidence
+		combinedConfidence := (structuralConfidence + tagPrediction.Confidence) / 2.0
 
 		node := AnalysisNode{
 			ID:         generateNodeID(),
 			Name:       catValue,
 			Value:      value,
 			Type:       nodeType,
-			Tag:        tag,
-			Confidence: confidence,
+			Tag:        tagPrediction.Tag,
+			Confidence: combinedConfidence,
 			ExcelCell:  catCell,
 			ExcelRow:   rowIdx,
 			Formula:    formula,

@@ -200,7 +200,7 @@ func (d *Dependencies) initServices() error {
 	d.BalanceService = balance.NewService(d.BalanceRepo)
 
 	// Plan service for user financial plans (BYOS)
-	d.PlanService = planservice.NewPlanService(d.PlanRepo, d.ImportRepo, d.Logger)
+	d.PlanService = planservice.NewPlanService(d.PlanRepo, d.ImportRepo, d.DB.Pool, d.Logger)
 
 	// Goals service for savings goals with progress tracking
 	d.GoalsService = goalsservice.NewService(d.GoalsRepo)

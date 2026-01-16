@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	importrepo "github.com/FACorreiaa/smart-finance-tracker/internal/domain/import/repository"
 	"github.com/FACorreiaa/smart-finance-tracker/internal/domain/plan/repository"
 	"github.com/google/uuid"
@@ -18,14 +20,16 @@ import (
 type PlanService struct {
 	repo       repository.PlanRepository
 	importRepo importrepo.ImportRepository
+	pool       *pgxpool.Pool // For ML correction persistence
 	logger     *slog.Logger
 }
 
 // NewPlanService creates a new plan service
-func NewPlanService(repo repository.PlanRepository, importRepo importrepo.ImportRepository, logger *slog.Logger) *PlanService {
+func NewPlanService(repo repository.PlanRepository, importRepo importrepo.ImportRepository, pool *pgxpool.Pool, logger *slog.Logger) *PlanService {
 	return &PlanService{
 		repo:       repo,
 		importRepo: importRepo,
+		pool:       pool,
 		logger:     logger,
 	}
 }

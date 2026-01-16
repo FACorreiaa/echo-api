@@ -271,7 +271,7 @@ func TestIntegration_FullImportFlow(t *testing.T) {
 		}
 		require.NoError(t, err)
 
-		svc := planservice.NewPlanService(nil, nil, nil)
+		svc := planservice.NewPlanService(nil, nil, nil, nil)
 
 		result, err := svc.AnalyzeExcel(bytes.NewReader(data))
 		require.NoError(t, err, "AnalyzeExcel should not fail for budget.xlsx")
@@ -284,5 +284,139 @@ func TestIntegration_FullImportFlow(t *testing.T) {
 			t.Logf("  Sheet %q: rows=%d, formulas=%d, living=%v",
 				s.Name, s.RowCount, s.FormulaCount, s.IsLivingPlan)
 		}
+	})
+}
+
+// TestMLTreeAnalysis_Budget tests the structural ML-based analysis of a budget spreadsheet.
+// This verifies that the ML predictor correctly identifies GROUP/ITEM nodes and predicts tags.
+func TestMLTreeAnalysis_Budget(t *testing.T) {
+	xlsxPath := filepath.Join(testDataDir, "budget.xlsx")
+
+	data, err := os.ReadFile(xlsxPath)
+	if os.IsNotExist(err) {
+		t.Skipf("Test data file not found: %s (add budget.xlsx to run this test)", xlsxPath)
+	}
+	require.NoError(t, err, "Failed to read budget Excel file")
+	require.NotEmpty(t, data, "Budget Excel file is empty")
+
+	t.Run("AnalyzeExcelTree", func(t *testing.T) {
+		svc := planservice.NewPlanService(nil, nil, nil, nil)
+
+		// First analyze to get sheet info
+		analysis, err := svc.AnalyzeExcel(bytes.NewReader(data))
+		require.NoError(t, err, "AnalyzeExcel should not fail")
+		require.NotEmpty(t, analysis.Sheets, "Expected at least one sheet")
+
+		// Get the first sheet or suggested sheet
+		sheetName := analysis.SuggestedSheet
+		if sheetName == "" && len(analysis.Sheets) > 0 {
+			sheetName = analysis.Sheets[0].Name
+		}
+		require.NotEmpty(t, sheetName, "Expected a sheet name")
+
+		// Get detected mapping
+		var catCol, valCol string
+		var startRow int
+		for _, s := range analysis.Sheets {
+			if s.Name == sheetName && s.DetectedMapping != nil {
+				catCol = s.DetectedMapping.CategoryColumn
+				valCol = s.DetectedMapping.ValueColumn
+				startRow = s.DetectedMapping.HeaderRow
+				break
+			}
+		}
+
+		// Use defaults if no mapping detected
+		if catCol == "" {
+			catCol = "A"
+		}
+		if valCol == "" {
+			valCol = "C"
+		}
+		if startRow == 0 {
+			startRow = 5
+		}
+
+		// Analyze tree using ML
+		tree, err := svc.AnalyzeExcelTree(bytes.NewReader(data), sheetName, catCol, valCol, startRow)
+		require.NoError(t, err, "AnalyzeExcelTree should not fail")
+		require.NotNil(t, tree, "Expected non-nil tree response")
+
+		t.Logf("ML Tree Analysis for %q:", sheetName)
+		t.Logf("  Total Groups: %d", tree.TotalGroups)
+		t.Logf("  Total Items: %d", tree.TotalItems)
+		t.Logf("  Overall Confidence: %.2f", tree.OverallConfidence)
+
+		// Verify we got some structure
+		assert.GreaterOrEqual(t, len(tree.Nodes), 1, "Expected at least one top-level node")
+
+		// Log the tree structure
+		for _, node := range tree.Nodes {
+			t.Logf("  GROUP: %q (tag=%s, confidence=%.2f, row=%d)",
+				node.Name, node.Tag, node.Confidence, node.ExcelRow)
+			for _, child := range node.Children {
+				t.Logf("    ITEM: %q -> %.2f (tag=%s, confidence=%.2f, row=%d)",
+					child.Name, child.Value, child.Tag, child.Confidence, child.ExcelRow)
+			}
+		}
+
+		// Verify confidence scores are in valid range
+		for _, node := range tree.Nodes {
+			assert.GreaterOrEqual(t, node.Confidence, 0.0, "Confidence should be >= 0")
+			assert.LessOrEqual(t, node.Confidence, 1.0, "Confidence should be <= 1")
+			for _, child := range node.Children {
+				assert.GreaterOrEqual(t, child.Confidence, 0.0)
+				assert.LessOrEqual(t, child.Confidence, 1.0)
+			}
+		}
+	})
+
+	t.Run("MLTagPrediction", func(t *testing.T) {
+		predictor := planexcel.GetMLPredictor()
+
+		// Test multilingual tag predictions
+		testCases := []struct {
+			term        string
+			expectedTag planexcel.ItemTag
+		}{
+			// English
+			{"Salary", planexcel.TagIncome},
+			{"Rent", planexcel.TagRecurring},
+			{"Groceries", planexcel.TagBudget},
+			{"Savings", planexcel.TagSavings},
+			{"Loan", planexcel.TagDebt},
+			// Portuguese
+			{"Salário", planexcel.TagIncome},
+			{"Aluguel", planexcel.TagRecurring},
+			{"Supermercado", planexcel.TagBudget},
+			{"Poupança", planexcel.TagSavings},
+			// Russian
+			{"Зарплата", planexcel.TagIncome},
+			{"Аренда", planexcel.TagRecurring},
+			{"Продукты", planexcel.TagBudget},
+		}
+
+		for _, tc := range testCases {
+			prediction := predictor.PredictTagWithConfidence(tc.term)
+			t.Logf("  %q -> predicted=%s (expected=%s, confidence=%.2f)",
+				tc.term, prediction.Tag, tc.expectedTag, prediction.Confidence)
+			assert.Equal(t, tc.expectedTag, prediction.Tag,
+				"Expected tag %s for term %q, got %s", tc.expectedTag, tc.term, prediction.Tag)
+		}
+	})
+
+	t.Run("OnlineLearning", func(t *testing.T) {
+		predictor := planexcel.GetMLPredictor()
+
+		// Teach a new term
+		customTerm := "CustomExpense123"
+		predictor.Learn(customTerm, planexcel.TagRecurring)
+
+		// Verify it was learned
+		prediction := predictor.PredictTagWithConfidence(customTerm)
+		t.Logf("  Learned %q -> predicted=%s, confidence=%.2f",
+			customTerm, prediction.Tag, prediction.Confidence)
+		assert.Equal(t, planexcel.TagRecurring, prediction.Tag,
+			"Expected learned term to predict as RECURRING")
 	})
 }
