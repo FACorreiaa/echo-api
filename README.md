@@ -1,6 +1,6 @@
 # Echo — Smart Finance Tracker (Alive Money OS)
 
-Echo is a personal finance product built to feel **alive**: it doesn’t just show charts, it proactively turns your transaction data into **clear next actions**, **monthly insights**, and a shareable **“Money Wrapped”** story.
+Echo is a personal finance product built to feel **alive**: it doesn’t just show charts, it proactively turns your transaction data into **actions**, **monthly insights**, and a shareable **“Money Wrapped”** story.
 
 This repo currently represents the **Echo API** (backend). Frontend is **TBA**.
 
