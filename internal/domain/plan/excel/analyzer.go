@@ -62,29 +62,38 @@ const (
 	TagUnknown   ItemTag = ""   // Unknown/unclassified
 )
 
+// ConfidenceThreshold is the "Sovereign Certainty" bar.
+// Items with confidence >= this threshold are auto-approved.
+// Items below this threshold require user review.
+const ConfidenceThreshold = 0.80
+
 // AnalysisNode represents a node in the hierarchical analysis tree
 type AnalysisNode struct {
-	ID         string         `json:"id"`
-	Name       string         `json:"name"`
-	Value      float64        `json:"value"`
-	Type       NodeType       `json:"type"`       // GROUP, ITEM, IGNORE
-	Tag        ItemTag        `json:"tag"`        // B, R, S, IN
-	Confidence float64        `json:"confidence"` // 0.0 - 1.0
-	ExcelCell  string         `json:"excelCell"`
-	ExcelRow   int            `json:"excelRow"`
-	Formula    string         `json:"formula,omitempty"`
-	Children   []AnalysisNode `json:"children,omitempty"`
+	ID             string         `json:"id"`
+	Name           string         `json:"name"`
+	Value          float64        `json:"value"`
+	Type           NodeType       `json:"type"`           // GROUP, ITEM, IGNORE
+	Tag            ItemTag        `json:"tag"`            // B, R, S, IN
+	Confidence     float64        `json:"confidence"`     // 0.0 - 1.0
+	NeedsReview    bool           `json:"needsReview"`    // confidence < 0.80
+	IsAutoApproved bool           `json:"isAutoApproved"` // confidence >= 0.80
+	ExcelCell      string         `json:"excelCell"`
+	ExcelRow       int            `json:"excelRow"`
+	Formula        string         `json:"formula,omitempty"`
+	Children       []AnalysisNode `json:"children,omitempty"`
 }
 
 // AnalysisTreeResponse is the API response for tree analysis
 type AnalysisTreeResponse struct {
-	SheetName         string          `json:"sheetName"`
-	Nodes             []AnalysisNode  `json:"nodes"`
-	ColumnProfiles    []ColumnProfile `json:"columnProfiles,omitempty"`
-	DetectedMapping   *ColumnMapping  `json:"detectedMapping,omitempty"`
-	TotalGroups       int             `json:"totalGroups"`
-	TotalItems        int             `json:"totalItems"`
-	OverallConfidence float64         `json:"overallConfidence"`
+	SheetName          string          `json:"sheetName"`
+	Nodes              []AnalysisNode  `json:"nodes"`
+	ColumnProfiles     []ColumnProfile `json:"columnProfiles,omitempty"`
+	DetectedMapping    *ColumnMapping  `json:"detectedMapping,omitempty"`
+	TotalGroups        int             `json:"totalGroups"`
+	TotalItems         int             `json:"totalItems"`
+	OverallConfidence  float64         `json:"overallConfidence"`
+	ItemsNeedingReview int             `json:"itemsNeedingReview"` // Count of items with confidence < 0.80
+	AutoApprovedItems  int             `json:"autoApprovedItems"`  // Count of items with confidence >= 0.80
 }
 
 // ============================================================================
@@ -255,15 +264,17 @@ func (a *StructuralAnalyzer) AnalyzeSheetTree(sheetName string, catCol, valCol s
 		combinedConfidence := (structuralConfidence + tagPrediction.Confidence) / 2.0
 
 		node := AnalysisNode{
-			ID:         generateNodeID(),
-			Name:       catValue,
-			Value:      value,
-			Type:       nodeType,
-			Tag:        tagPrediction.Tag,
-			Confidence: combinedConfidence,
-			ExcelCell:  catCell,
-			ExcelRow:   rowIdx,
-			Formula:    formula,
+			ID:             generateNodeID(),
+			Name:           catValue,
+			Value:          value,
+			Type:           nodeType,
+			Tag:            tagPrediction.Tag,
+			Confidence:     combinedConfidence,
+			NeedsReview:    combinedConfidence < ConfidenceThreshold,
+			IsAutoApproved: combinedConfidence >= ConfidenceThreshold,
+			ExcelCell:      catCell,
+			ExcelRow:       rowIdx,
+			Formula:        formula,
 		}
 
 		if nodeType == NodeTypeGroup {
@@ -279,11 +290,13 @@ func (a *StructuralAnalyzer) AnalyzeSheetTree(sheetName string, catCol, valCol s
 			} else {
 				// No group yet - create default group
 				currentGroup = &AnalysisNode{
-					ID:         generateNodeID(),
-					Name:       "Imported Items",
-					Type:       NodeTypeGroup,
-					Confidence: 0.5,
-					Children:   []AnalysisNode{node},
+					ID:             generateNodeID(),
+					Name:           "Imported Items",
+					Type:           NodeTypeGroup,
+					Confidence:     0.5,
+					NeedsReview:    true, // Default groups need review
+					IsAutoApproved: false,
+					Children:       []AnalysisNode{node},
 				}
 			}
 		}
@@ -298,11 +311,19 @@ func (a *StructuralAnalyzer) AnalyzeSheetTree(sheetName string, catCol, valCol s
 	totalGroups := len(nodes)
 	totalItems := 0
 	confidenceSum := 0.0
+	itemsNeedingReview := 0
+	autoApprovedItems := 0
+
 	for _, n := range nodes {
 		totalItems += len(n.Children)
 		confidenceSum += n.Confidence
 		for _, c := range n.Children {
 			confidenceSum += c.Confidence
+			if c.NeedsReview {
+				itemsNeedingReview++
+			} else {
+				autoApprovedItems++
+			}
 		}
 	}
 
@@ -313,11 +334,13 @@ func (a *StructuralAnalyzer) AnalyzeSheetTree(sheetName string, catCol, valCol s
 	}
 
 	return &AnalysisTreeResponse{
-		SheetName:         sheetName,
-		Nodes:             nodes,
-		TotalGroups:       totalGroups,
-		TotalItems:        totalItems,
-		OverallConfidence: overallConfidence,
+		SheetName:          sheetName,
+		Nodes:              nodes,
+		TotalGroups:        totalGroups,
+		TotalItems:         totalItems,
+		OverallConfidence:  overallConfidence,
+		ItemsNeedingReview: itemsNeedingReview,
+		AutoApprovedItems:  autoApprovedItems,
 	}, nil
 }
 
