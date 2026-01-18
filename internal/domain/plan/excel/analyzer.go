@@ -277,14 +277,15 @@ func (a *StructuralAnalyzer) AnalyzeSheetTree(sheetName string, catCol, valCol s
 			Formula:        formula,
 		}
 
-		if nodeType == NodeTypeGroup {
+		switch nodeType {
+		case NodeTypeGroup:
 			// Save previous group
 			if currentGroup != nil {
 				nodes = append(nodes, *currentGroup)
 			}
 			currentGroup = &node
 			currentGroup.Children = make([]AnalysisNode, 0)
-		} else if nodeType == NodeTypeItem {
+		case NodeTypeItem:
 			if currentGroup != nil {
 				currentGroup.Children = append(currentGroup.Children, node)
 			} else {
@@ -377,7 +378,7 @@ func (a *StructuralAnalyzer) buildRowFeatures(sheetName, catCell, valCell, catVa
 }
 
 // classifyRow determines if a row is a GROUP, ITEM, or IGNORE
-func (a *StructuralAnalyzer) classifyRow(features RowFeatures, catValue, valValue string) (NodeType, float64) {
+func (a *StructuralAnalyzer) classifyRow(features RowFeatures, catValue, _ string) (NodeType, float64) {
 	// =========================================================================
 	// RULE 1: The Empty-Value Rule (Highest Confidence)
 	// If category has text but value is empty → GROUP

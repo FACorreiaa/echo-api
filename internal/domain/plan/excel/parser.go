@@ -321,7 +321,7 @@ func (p *Parser) detectColumnMapping(sheetName string, textCounts, numericCounts
 }
 
 // detectHeaderRow finds the row that likely contains column headers
-func (p *Parser) detectHeaderRow(sheetName string, textCol, valueCol int) int {
+func (p *Parser) detectHeaderRow(sheetName string, _, _ int) int {
 	rows, err := p.file.GetRows(sheetName)
 	if err != nil || len(rows) == 0 {
 		return 1

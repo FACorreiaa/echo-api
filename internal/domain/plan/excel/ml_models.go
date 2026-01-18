@@ -126,15 +126,14 @@ func (p *MLPredictor) PredictTagWithConfidence(categoryName string) TagPredictio
 		// Relative confidence (how much better than alternatives)
 		relativeConfidence := bestScore / totalScore
 		// Absolute confidence (did we match well?)
-		absoluteConfidence := 0.0
-		if bestScore >= 3.0 {
+		absoluteConfidence := 0.50
+		switch {
+		case bestScore >= 3.0:
 			absoluteConfidence = 0.95 // Strong match
-		} else if bestScore >= 2.0 {
+		case bestScore >= 2.0:
 			absoluteConfidence = 0.85
-		} else if bestScore >= 1.0 {
+		case bestScore >= 1.0:
 			absoluteConfidence = 0.70
-		} else {
-			absoluteConfidence = 0.50
 		}
 		confidence = (relativeConfidence + absoluteConfidence) / 2.0
 	}
